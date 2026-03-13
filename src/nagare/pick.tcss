@@ -1,0 +1,20 @@
+Screen {
+    layout: vertical;
+}
+
+#search {
+    dock: top;
+    margin: 0 0 1 0;
+}
+
+#session-list {
+    height: 1fr;
+}
+
+#hint-bar {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+}
