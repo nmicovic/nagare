@@ -1,0 +1,15 @@
+Screen {
+    layout: vertical;
+}
+
+#notif-list {
+    height: 1fr;
+}
+
+#hint-bar {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+}
