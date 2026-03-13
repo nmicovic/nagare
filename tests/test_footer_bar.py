@@ -7,8 +7,22 @@ class FooterApp(App):
         yield FooterBar()
 
 
-async def test_footer_renders():
+async def test_footer_browse_mode():
     app = FooterApp()
     async with app.run_test() as pilot:
         footer = app.query_one(FooterBar)
-        assert footer is not None
+        footer.set_browse_mode()
+        await pilot.pause()
+        text = str(footer.render())
+        assert "Ctrl+]" in text
+
+
+async def test_footer_interactive_mode():
+    app = FooterApp()
+    async with app.run_test() as pilot:
+        footer = app.query_one(FooterBar)
+        footer.set_interactive_mode()
+        await pilot.pause()
+        text = str(footer.render())
+        assert "Ctrl+]" in text
+        assert "forwarded" in text.lower()
