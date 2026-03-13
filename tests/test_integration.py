@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from nagare.app import NagareApp
 from nagare.models import Session, SessionStatus
 
@@ -9,33 +9,53 @@ MOCK_SESSIONS = [
 ]
 
 
-@patch("nagare.app.capture_pane", return_value="mock pane content")
 @patch("nagare.app.scan_sessions", return_value=MOCK_SESSIONS)
-async def test_navigate_sessions(mock_scan, mock_capture):
+@patch("nagare.app.PollingTransport")
+async def test_navigate_sessions(MockTransport, mock_scan):
+    mock_transport = MockTransport.return_value
+    mock_transport.get_content.return_value = "mock content"
     app = NagareApp()
     async with app.run_test() as pilot:
         await pilot.pause()
-        session_list = app.query_one("SessionList")
+        from nagare.widgets.session_list import SessionList
+        session_list = app.query_one(SessionList)
 
-        # Initial selection is first session
         assert session_list.selected_session == MOCK_SESSIONS[0]
-
-        # Navigate down
         await pilot.press("j")
         await pilot.pause()
         assert session_list.selected_session == MOCK_SESSIONS[1]
-
-        # Navigate back up
         await pilot.press("k")
         await pilot.pause()
         assert session_list.selected_session == MOCK_SESSIONS[0]
 
 
-@patch("nagare.app.capture_pane", return_value="mock pane content")
 @patch("nagare.app.scan_sessions", return_value=MOCK_SESSIONS)
-async def test_quit(mock_scan, mock_capture):
+@patch("nagare.app.PollingTransport")
+async def test_toggle_pane(MockTransport, mock_scan):
+    mock_transport = MockTransport.return_value
+    mock_transport.get_content.return_value = "mock content"
+    app = NagareApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app._active_pane == "left"
+
+        await pilot.press("ctrl+right_square_bracket")
+        await pilot.pause()
+        assert app._active_pane == "right"
+        mock_transport.start_streaming.assert_called_once()
+
+        await pilot.press("ctrl+right_square_bracket")
+        await pilot.pause()
+        assert app._active_pane == "left"
+        mock_transport.stop_streaming.assert_called()
+
+
+@patch("nagare.app.scan_sessions", return_value=MOCK_SESSIONS)
+@patch("nagare.app.PollingTransport")
+async def test_quit(MockTransport, mock_scan):
+    mock_transport = MockTransport.return_value
+    mock_transport.get_content.return_value = "mock content"
     app = NagareApp()
     async with app.run_test() as pilot:
         await pilot.press("q")
         await pilot.pause()
-        # App should have exited

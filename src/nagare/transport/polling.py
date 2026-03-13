@@ -34,11 +34,13 @@ class PollingTransport(SessionTransport):
             content = self.get_content(session)
             callback(content)
             if self._streaming:
-                self._stream_timer = threading.Timer(0.2, poll)
+                self._stream_timer = threading.Timer(0.05, poll)
                 self._stream_timer.daemon = True
                 self._stream_timer.start()
 
-        poll()
+        self._stream_timer = threading.Timer(0, poll)
+        self._stream_timer.daemon = True
+        self._stream_timer.start()
 
     def stop_streaming(self) -> None:
         self._streaming = False
