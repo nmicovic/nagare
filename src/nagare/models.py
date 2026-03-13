@@ -3,14 +3,33 @@ from enum import Enum
 
 
 class SessionStatus(Enum):
-    ALIVE = "alive"
+    WAITING_INPUT = "waiting_input"
+    RUNNING = "running"
+    IDLE = "idle"
     DEAD = "dead"
 
 
 STATUS_ICONS: dict[SessionStatus, str] = {
-    SessionStatus.ALIVE: "●",
+    SessionStatus.WAITING_INPUT: "❓",
+    SessionStatus.RUNNING: "⚙",
+    SessionStatus.IDLE: "●",
     SessionStatus.DEAD: "○",
 }
+
+
+STATUS_LABELS: dict[SessionStatus, str] = {
+    SessionStatus.WAITING_INPUT: "Waiting for input",
+    SessionStatus.RUNNING: "Running",
+    SessionStatus.IDLE: "Idle",
+    SessionStatus.DEAD: "Exited",
+}
+
+
+@dataclass(frozen=True)
+class SessionDetails:
+    git_branch: str = ""
+    model: str = ""
+    context_usage: str = ""
 
 
 @dataclass(frozen=True)
@@ -20,10 +39,15 @@ class Session:
     path: str
     pane_index: int
     status: SessionStatus
+    details: SessionDetails = SessionDetails()
 
     @property
     def status_icon(self) -> str:
         return STATUS_ICONS[self.status]
+
+    @property
+    def status_label(self) -> str:
+        return STATUS_LABELS[self.status]
 
     @property
     def display(self) -> str:

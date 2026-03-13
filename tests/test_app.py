@@ -4,7 +4,7 @@ from nagare.models import Session, SessionStatus
 
 
 MOCK_SESSIONS = [
-    Session(name="proj-a", session_id="$1", path="/home/user/a", pane_index=0, status=SessionStatus.ALIVE),
+    Session(name="proj-a", session_id="$1", path="/home/user/a", pane_index=0, status=SessionStatus.IDLE),
 ]
 
 

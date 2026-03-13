@@ -15,7 +15,7 @@ class FooterBar(Static):
 
     def __init__(self) -> None:
         content = (
-            "[b]↑/k[/b] Up  [b]↓/j[/b] Down  [b]Enter[/b] Attach  [b]r[/b] Refresh  [b]q[/b] Quit\n"
+            "[b]↑/k[/b] Up  [b]↓/j[/b] Down  [b]Enter[/b] Attach  [b]r[/b] Refresh  [b]t[/b] Theme  [b]q[/b] Quit\n"
             "Detach from session: [b]Ctrl+b d[/b]"
         )
         super().__init__(content)

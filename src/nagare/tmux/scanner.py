@@ -1,5 +1,6 @@
-from nagare.models import Session, SessionStatus
+from nagare.models import Session
 from nagare.tmux import run_tmux
+from nagare.tmux.status import detect_status, parse_details
 
 
 def _parse_sessions(raw: str) -> list[tuple[str, str, str]]:
@@ -29,11 +30,17 @@ def scan_sessions() -> list[Session]:
         pane_output = run_tmux("list-panes", "-t", name, "-F", "#{pane_index}:#{pane_current_command}")
         pane_index = _find_claude_pane(pane_output)
         if pane_index is not None:
+            pane_content = run_tmux(
+                "capture-pane", "-t", f"{name}:{pane_index}", "-p",
+            )
+            status = detect_status(pane_content)
+            details = parse_details(pane_content)
             sessions.append(Session(
                 name=name,
                 session_id=session_id,
                 path=path,
                 pane_index=pane_index,
-                status=SessionStatus.ALIVE,
+                status=status,
+                details=details,
             ))
     return sessions

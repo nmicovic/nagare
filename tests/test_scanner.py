@@ -33,6 +33,8 @@ def test_scan_sessions(mock_run):
         "proj-a:$1:/home/user/a\nproj-b:$2:/home/user/b",
         # list-panes for proj-a — has claude
         "0:claude",
+        # capture-pane for proj-a — shows a prompt (waiting for input)
+        "Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel",
         # list-panes for proj-b — no claude
         "0:zsh",
     ]
@@ -43,5 +45,5 @@ def test_scan_sessions(mock_run):
         session_id="$1",
         path="/home/user/a",
         pane_index=0,
-        status=SessionStatus.ALIVE,
+        status=SessionStatus.WAITING_INPUT,
     )

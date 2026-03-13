@@ -22,6 +22,9 @@ class SessionList(ListView):
         return None
 
     def update_sessions(self, sessions: list[Session]) -> None:
+        # Skip rebuild if sessions haven't changed
+        if sessions == self._sessions:
+            return
         prev_name = self.selected_session.name if self.selected_session else None
         self._sessions = sessions
         self.clear()
@@ -30,12 +33,13 @@ class SessionList(ListView):
         if not sessions:
             return
         # Restore selection by name
+        new_index = 0
         if prev_name:
             for i, s in enumerate(sessions):
                 if s.name == prev_name:
-                    self.index = i
-                    return
-        self.index = 0
+                    new_index = i
+                    break
+        self.index = new_index
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         session = self.selected_session

@@ -2,9 +2,17 @@ Screen {
     layout: horizontal;
 }
 
-SessionList {
+#left-pane {
     width: 30%;
     border-right: solid $accent;
+}
+
+SessionList {
+    height: 1fr;
+}
+
+SessionDetail {
+    height: auto;
 }
 
 PreviewPane {

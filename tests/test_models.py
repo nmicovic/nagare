@@ -7,13 +7,13 @@ def test_session_creation():
         session_id="$1",
         path="/home/user/projects/my-project",
         pane_index=0,
-        status=SessionStatus.ALIVE,
+        status=SessionStatus.IDLE,
     )
     assert session.name == "my-project"
     assert session.session_id == "$1"
     assert session.path == "/home/user/projects/my-project"
     assert session.pane_index == 0
-    assert session.status == SessionStatus.ALIVE
+    assert session.status == SessionStatus.IDLE
 
 
 def test_session_display_name():
@@ -22,13 +22,13 @@ def test_session_display_name():
         session_id="$1",
         path="/home/user/projects/my-project",
         pane_index=0,
-        status=SessionStatus.ALIVE,
+        status=SessionStatus.IDLE,
     )
     assert session.display == "● my-project"
 
 
 def test_session_status_icons():
-    alive = Session(name="a", session_id="$1", path="/tmp", pane_index=0, status=SessionStatus.ALIVE)
+    alive = Session(name="a", session_id="$1", path="/tmp", pane_index=0, status=SessionStatus.IDLE)
     dead = Session(name="b", session_id="$2", path="/tmp", pane_index=0, status=SessionStatus.DEAD)
 
     assert alive.status_icon == "●"
