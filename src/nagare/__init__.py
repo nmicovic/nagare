@@ -1,14 +1,29 @@
 import os
-
-from nagare.app import NagareApp
+import sys
 
 
 def main() -> None:
-    # Ensure Textual uses true color (24-bit) rendering.
-    # Inside tmux on WSL, COLORTERM is often unset even though
-    # Windows Terminal fully supports true color.
     if not os.environ.get("COLORTERM"):
         os.environ["COLORTERM"] = "truecolor"
 
-    app = NagareApp()
-    app.run()
+    args = sys.argv[1:]
+    command = args[0] if args else "pick"
+
+    if command == "pick":
+        from nagare.pick import PickerApp
+        app = PickerApp()
+        app.run()
+    elif command == "notifs":
+        from nagare.notifs import NotifsApp
+        app = NotifsApp()
+        app.run()
+    elif command == "daemon":
+        from nagare.daemon import run_daemon
+        run_daemon()
+    elif command == "setup":
+        from nagare.setup import run_setup
+        run_setup()
+    else:
+        print(f"Unknown command: {command}")
+        print("Usage: nagare [pick|notifs|daemon|setup]")
+        sys.exit(1)
