@@ -1,15 +1,5 @@
-import subprocess
-
 from nagare.models import Session, SessionStatus
-
-
-def _run_tmux(*args: str) -> str:
-    result = subprocess.run(
-        ["tmux", *args],
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip()
+from nagare.tmux import run_tmux
 
 
 def _parse_sessions(raw: str) -> list[tuple[str, str, str]]:
@@ -32,11 +22,11 @@ def _find_claude_pane(pane_output: str) -> int | None:
 
 
 def scan_sessions() -> list[Session]:
-    raw = _run_tmux("list-sessions", "-F", "#{session_name}:#{session_id}:#{session_path}")
+    raw = run_tmux("list-sessions", "-F", "#{session_name}:#{session_id}:#{session_path}")
     parsed = _parse_sessions(raw)
     sessions = []
     for name, session_id, path in parsed:
-        pane_output = _run_tmux("list-panes", "-t", name, "-F", "#{pane_index}:#{pane_current_command}")
+        pane_output = run_tmux("list-panes", "-t", name, "-F", "#{pane_index}:#{pane_current_command}")
         pane_index = _find_claude_pane(pane_output)
         if pane_index is not None:
             sessions.append(Session(

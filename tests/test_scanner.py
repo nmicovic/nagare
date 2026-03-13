@@ -26,7 +26,7 @@ def test_find_claude_pane_not_found():
     assert _find_claude_pane(pane_output) is None
 
 
-@patch("nagare.tmux.scanner._run_tmux")
+@patch("nagare.tmux.scanner.run_tmux")
 def test_scan_sessions(mock_run):
     mock_run.side_effect = [
         # list-sessions
