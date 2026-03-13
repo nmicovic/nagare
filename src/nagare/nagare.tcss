@@ -4,7 +4,11 @@ Screen {
 
 #left-pane {
     width: 30%;
-    border-right: solid $accent;
+    border: solid $primary;
+}
+
+#left-pane.inactive-pane {
+    border: solid $surface;
 }
 
 SessionList {
@@ -15,7 +19,7 @@ SessionDetail {
     height: auto;
 }
 
-PreviewPane {
+TerminalView {
     width: 70%;
 }
 
