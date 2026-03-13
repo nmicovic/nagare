@@ -1,0 +1,17 @@
+Screen {
+    layout: horizontal;
+}
+
+SessionList {
+    width: 30%;
+    border-right: solid $accent;
+}
+
+PreviewPane {
+    width: 70%;
+}
+
+FooterBar {
+    dock: bottom;
+    width: 100%;
+}
