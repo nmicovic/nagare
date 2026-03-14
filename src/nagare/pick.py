@@ -294,8 +294,16 @@ class PickerApp(App):
         self._refresh_sessions()
         self._select_current_session()
         self._update_hint_bar()
-        self._update_dashboard()
         self.query_one("#search", Input).focus()
+        # Defer heavy work so the picker renders immediately
+        self.call_after_refresh(self._deferred_init)
+
+    def _deferred_init(self) -> None:
+        """Run after first render — start polls and update dashboard."""
+        self._update_dashboard()
+        session = self._get_highlighted_session()
+        if session is not None:
+            self._update_preview(session)
         self.set_interval(2, self._poll_state)
         self.set_interval(1, self._poll_preview)
 
@@ -307,7 +315,6 @@ class PickerApp(App):
         for i, session in enumerate(self._filtered_sessions):
             if session.name == self._current_session:
                 lv.index = i
-                self._update_preview(session)
                 break
 
     def _refresh_sessions(self) -> None:
@@ -327,16 +334,23 @@ class PickerApp(App):
         self._update_title_bar()
 
     def _poll_state(self) -> None:
+        # Remember which session is highlighted by name, not index
+        highlighted = self._get_highlighted_session()
+        highlighted_name = highlighted.name if highlighted else None
+
         old_snapshot = {s.name: s.status for s in self._sessions}
         self._sessions = scan_sessions()
         self._sessions.sort(key=lambda s: _STATUS_SORT.get(s.status, 99))
         new_snapshot = {s.name: s.status for s in self._sessions}
         if old_snapshot != new_snapshot:
-            lv = self.query_one("#session-list", ListView)
-            old_idx = lv.index
             self._apply_filter()
-            if old_idx is not None and 0 <= old_idx < len(self._filtered_sessions):
-                lv.index = old_idx
+            # Restore selection by name
+            if highlighted_name:
+                lv = self.query_one("#session-list", ListView)
+                for i, s in enumerate(self._filtered_sessions):
+                    if s.name == highlighted_name:
+                        lv.index = i
+                        break
         self._update_dashboard()
 
     def _poll_preview(self) -> None:
