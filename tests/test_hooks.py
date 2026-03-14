@@ -324,7 +324,8 @@ def test_deliver_calls_enabled_methods(mock_popup, mock_os, mock_bell, mock_toas
 
     _deliver("proj", "needs_input", "proj needs input", cfg, 0, tmp_path / "notifs.json")
 
-    mock_toast.assert_called_once()
+    # Toast is skipped when popup is enabled
+    mock_toast.assert_not_called()
     mock_bell.assert_called_once()
     mock_os.assert_called_once_with("nagare", "proj needs input")
     mock_popup.assert_called_once_with("proj", "needs_input", "proj needs input", working_seconds=0, popup_timeout=5)
@@ -348,5 +349,6 @@ def test_deliver_per_session_override(mock_popup, mock_toast, mock_store_cls, tm
 
     _deliver("proj", "needs_input", "proj needs input", cfg, 0, tmp_path / "notifs.json")
 
-    mock_toast.assert_called_once()
+    # Toast skipped because per-session override enables popup
+    mock_toast.assert_not_called()
     mock_popup.assert_called_once_with("proj", "needs_input", "proj needs input", working_seconds=0, popup_timeout=7)

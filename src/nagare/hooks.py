@@ -90,7 +90,8 @@ def _deliver(
     popup_timeout = session_overrides.get("popup_timeout", event_cfg.popup_timeout)
 
     # Deliver via enabled channels
-    if toast:
+    # Skip toast when popup is enabled — toast renders inside the popup otherwise
+    if toast and not popup:
         send_toast(message, duration=config.notification_duration)
     if bell:
         send_bell()
