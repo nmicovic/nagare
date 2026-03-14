@@ -50,13 +50,16 @@ def _get_active_session() -> str | None:
 
 
 def send_toast(message: str, duration: int = 3000) -> None:
-    """Send a tmux status-bar toast notification to the user's active session."""
+    """Send a tmux status-bar toast notification to the user's active session.
+
+    Uses run-shell -b to execute inside tmux server context, same as popup.
+    """
     try:
         active = _get_active_session()
-        if active:
-            run_tmux("display-message", "-t", active, "-d", str(duration), f"🔴 {message}")
-        else:
-            run_tmux("display-message", "-d", str(duration), f"🔴 {message}")
+        target = f"-t {shlex.quote(active)} " if active else ""
+        msg = shlex.quote(f"🔴 {message}")
+        inner_cmd = f"tmux display-message {target}-d {duration} {msg}"
+        run_tmux("run-shell", "-b", inner_cmd)
     except Exception:
         pass
 
@@ -115,9 +118,11 @@ def send_popup(
 ) -> None:
     """Launch the nagare popup-notif TUI inside a tmux display-popup.
 
-    Uses subprocess.run directly instead of run_tmux because display-popup
-    needs careful argument handling — the command after -E must be a single
-    shell string.
+    Uses `tmux run-shell -b` to execute display-popup from within the tmux
+    server context. This is critical — calling display-popup from a detached
+    subprocess (like a hook) causes tmux to open a new window instead of
+    an overlay popup. run-shell -b keeps the command inside tmux's own
+    execution context where popups work correctly.
     """
     try:
         nagare_bin = _find_nagare_bin()
@@ -134,21 +139,13 @@ def send_popup(
         ]
         if working_seconds:
             parts.extend(["--duration", str(working_seconds)])
-        cmd_str = " ".join(parts)
+        popup_cmd = " ".join(parts)
 
-        tmux_args = ["tmux", "display-popup", "-w", "60%", "-h", "30%", "-E", cmd_str]
+        # Build the full tmux display-popup command
         active = _get_active_session()
-        if active:
-            tmux_args = ["tmux", "display-popup", "-t", active, "-w", "60%", "-h", "30%", "-E", cmd_str]
-
-        # Fire-and-forget: don't wait for popup to close.
-        # subprocess.run would block until the popup exits, causing the
-        # hook to hit its timeout and get killed by Claude Code.
-        subprocess.Popen(
-            tmux_args,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-        )
+        target = f"-t {shlex.quote(active)} " if active else ""
+        # Use run-shell -b to execute inside tmux server context
+        inner_cmd = f"tmux display-popup {target}-w 60% -h 30% -E {shlex.quote(popup_cmd)}"
+        run_tmux("run-shell", "-b", inner_cmd)
     except Exception:
         pass
