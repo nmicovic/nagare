@@ -12,7 +12,13 @@ The core workflow: the user runs many Claude Code instances across tmux sessions
 
 - **Picker (`pick.py`, `pick.tcss`)** — The main TUI. Split-pane layout: left side has a searchable session list + dashboard stats, right side has session details + live-streaming tmux pane preview. Launched as a fullscreen tmux popup. Refreshes session states every 2s and preview every 1s.
 
-- **Hook Handler (`hooks.py`)** — Receives Claude Code lifecycle events (UserPromptSubmit, Stop, Notification, PreToolUse, SessionStart, SessionEnd) via stdin JSON. Writes state files to `~/.local/share/nagare/states/<session_id>.json`. Sends tmux toast notifications when sessions need input. Cleans up stale dead state files on new session start.
+- **Hook Handler (`hooks.py`)** — Receives Claude Code lifecycle events (UserPromptSubmit, Stop, Notification, PreToolUse, SessionStart, SessionEnd) via stdin JSON. Writes state files to `~/.local/share/nagare/states/<session_id>.json`. Determines notification event type (`needs_input` or `task_complete`), loads config, resolves per-session overrides, and dispatches to delivery functions. Cleans up stale dead state files on new session start.
+
+- **Notification Delivery (`notifications/deliver.py`)** — Four delivery methods: `send_toast()` (tmux status bar), `send_bell()` (terminal bell), `send_os_notify()` (native OS notification with WSL detection), `send_popup()` (rich popup TUI via tmux display-popup). All fire-and-forget with silent error handling.
+
+- **Popup Notification (`popup_notif.py`)** — Small Textual TUI launched by `tmux display-popup`. Shows status icon, session name, event details, Claude's last message. Enter jumps to session, Esc dismisses, auto-dismisses after configurable timeout with countdown.
+
+- **Notification Store (`notifications/store.py`)** — JSON-file backed store for notification history with read/unread tracking.
 
 - **State Reader (`state.py`)** — Reads hook-written state files keyed by project path (cwd). Resolves conflicts when multiple sessions share the same cwd by preferring live states over dead ones, and most recent timestamps among equals.
 
@@ -22,7 +28,7 @@ The core workflow: the user runs many Claude Code instances across tmux sessions
 
 - **History (`history.py`)** — Reads `~/.claude/history.jsonl` for conversation topics per project.
 
-- **Notification Center (`notifs.py`)** — TUI for viewing stored notifications. Launched via `prefix + e`.
+- **Notification Center (`notifs.py`)** — ListView-based TUI for viewing stored notifications. Launched via `prefix + e`.
 
 - **Themes (`themes.py`)** — Multiple tokyonight variants + other themes. Cyclable with `Ctrl+t` in picker.
 
@@ -30,12 +36,18 @@ The core workflow: the user runs many Claude Code instances across tmux sessions
 
 ```
 Claude Code hooks → stdin JSON → hooks.py → state files (JSON)
-                                          → tmux toast notifications
+                                          → config check (per-event, per-session)
+                                          → delivery: toast / bell / os_notify / popup
                                           → notification store (JSON)
 
 Picker poll (2s) → scanner.py → state.py (read state files) → UI update
 Picker poll (1s) → tmux capture-pane → preview panel update
 ```
+
+### Notification Events
+
+- **needs_input** — Claude needs user action (permission prompt, elicitation dialog). Configurable: toast, bell, os_notify, popup.
+- **task_complete** — Claude finished after working longer than `min_working_seconds` (default 30s). Prevents spam from quick responses.
 
 ### Session Status Semantics
 
