@@ -102,14 +102,17 @@ def send_popup(
     working_seconds: int = 0,
     popup_timeout: int = 10,
 ) -> None:
-    """Launch the nagare popup-notif TUI inside a tmux display-popup."""
+    """Launch the nagare popup-notif TUI inside a tmux display-popup.
+
+    Uses subprocess.run directly instead of run_tmux because display-popup
+    needs careful argument handling — the command after -E must be a single
+    shell string.
+    """
     try:
         nagare_bin = _find_nagare_bin()
         if nagare_bin is None:
             return
 
-        # Build the full command as a single shell string —
-        # tmux display-popup -E expects one command string, not split args
         parts = [
             shlex.quote(nagare_bin),
             "popup-notif",
@@ -122,10 +125,19 @@ def send_popup(
             parts.extend(["--duration", str(working_seconds)])
         cmd_str = " ".join(parts)
 
+        tmux_args = ["tmux", "display-popup", "-w60%", "-h30%", "-E", cmd_str]
         client = _get_client_tty()
         if client:
-            run_tmux("display-popup", "-c", client, "-w60%", "-h30%", "-E", cmd_str)
-        else:
-            run_tmux("display-popup", "-w60%", "-h30%", "-E", cmd_str)
+            tmux_args = ["tmux", "display-popup", "-c", client, "-w60%", "-h30%", "-E", cmd_str]
+
+        # Fire-and-forget: don't wait for popup to close.
+        # subprocess.run would block until the popup exits, causing the
+        # hook to hit its timeout and get killed by Claude Code.
+        subprocess.Popen(
+            tmux_args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
     except Exception:
         pass

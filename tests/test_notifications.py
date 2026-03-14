@@ -74,13 +74,14 @@ def test_detect_nothing_available(mock_which):
 
 
 @patch("nagare.notifications.deliver._get_client_tty", return_value="/dev/pts/0")
-@patch("nagare.notifications.deliver.run_tmux")
 @patch("nagare.notifications.deliver._find_nagare_bin", return_value="/usr/local/bin/nagare")
-def test_send_popup(mock_find, mock_run, mock_client):
+@patch("nagare.notifications.deliver.subprocess.Popen")
+def test_send_popup(mock_popen, mock_find, mock_client):
     send_popup("my-project", "waiting_for_input", "Needs attention", working_seconds=120, popup_timeout=15)
-    mock_run.assert_called_once()
-    args = mock_run.call_args[0]
-    assert args[0] == "display-popup"
+    mock_popen.assert_called_once()
+    args = mock_popen.call_args[0][0]
+    assert args[0] == "tmux"
+    assert "display-popup" in args
     assert "-c" in args
     assert "/dev/pts/0" in args
     assert "-E" in args
