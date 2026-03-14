@@ -27,7 +27,7 @@ def test_session_display_name():
         pane_index=0,
         status=SessionStatus.IDLE,
     )
-    assert session.display == "🟢 my-project"
+    assert session.display == "[#00D26A]●[/] my-project"
 
 
 def test_session_status_icons():
@@ -36,7 +36,7 @@ def test_session_status_icons():
     running = Session(name="c", session_id="$3", path="/tmp", window_index=0, pane_index=0, status=SessionStatus.RUNNING)
     dead = Session(name="d", session_id="$4", path="/tmp", window_index=0, pane_index=0, status=SessionStatus.DEAD)
 
-    assert idle.status_icon == "🟢"
-    assert waiting.status_icon == "🔴"
-    assert running.status_icon == "🟡"
-    assert dead.status_icon == "⚪"
+    assert idle.status_icon == "[#00D26A]●[/]"
+    assert waiting.status_icon == "[#db4b4b]●[/]"
+    assert running.status_icon == "[#e0af68]●[/]"
+    assert dead.status_icon == "[#565f89]●[/]"

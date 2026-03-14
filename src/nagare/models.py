@@ -10,10 +10,10 @@ class SessionStatus(Enum):
 
 
 STATUS_ICONS: dict[SessionStatus, str] = {
-    SessionStatus.WAITING_INPUT: "🔴",
-    SessionStatus.RUNNING: "🟡",
-    SessionStatus.IDLE: "🟢",
-    SessionStatus.DEAD: "⚪",
+    SessionStatus.WAITING_INPUT: "[#db4b4b]●[/]",
+    SessionStatus.RUNNING: "[#e0af68]●[/]",
+    SessionStatus.IDLE: "[#00D26A]●[/]",
+    SessionStatus.DEAD: "[#565f89]●[/]",
 }
 
 

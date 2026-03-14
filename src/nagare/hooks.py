@@ -59,6 +59,19 @@ def handle_hook() -> None:
     }
 
     STATES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # On new session, clean up dead state files for the same cwd
+    if event == "SessionStart" and cwd:
+        for old in STATES_DIR.glob("*.json"):
+            if old.stem == session_id:
+                continue
+            try:
+                old_data = json.loads(old.read_text())
+                if old_data.get("cwd") == cwd and old_data.get("state") == "dead":
+                    old.unlink()
+            except (OSError, json.JSONDecodeError):
+                continue
+
     state_path = STATES_DIR / f"{session_id}.json"
     state_path.write_text(json.dumps(state_data))
 

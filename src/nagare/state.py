@@ -19,7 +19,12 @@ class SessionState:
 
 
 def load_all_states() -> dict[str, SessionState]:
-    """Load all state files, keyed by cwd (project path)."""
+    """Load all state files, keyed by cwd (project path).
+
+    When multiple state files exist for the same cwd (e.g. after restarting
+    Claude in the same project), pick the best one: prefer any non-dead state
+    over dead, and among equal liveness prefer the most recent timestamp.
+    """
     states: dict[str, SessionState] = {}
     if not STATES_DIR.exists():
         return states
@@ -36,7 +41,19 @@ def load_all_states() -> dict[str, SessionState]:
                 last_message=data.get("last_message", ""),
                 timestamp=data.get("timestamp", ""),
             )
-            if st.cwd:
+            if not st.cwd:
+                continue
+            existing = states.get(st.cwd)
+            if existing is None:
+                states[st.cwd] = st
+            elif existing.state == "dead" and st.state != "dead":
+                # A live session always wins over a dead one
+                states[st.cwd] = st
+            elif existing.state != "dead" and st.state == "dead":
+                # Keep the live session
+                pass
+            elif st.timestamp > existing.timestamp:
+                # Same liveness category — most recent wins
                 states[st.cwd] = st
         except (OSError, json.JSONDecodeError):
             continue

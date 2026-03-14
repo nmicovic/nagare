@@ -13,13 +13,64 @@ Screen {
 
 #search {
     dock: top;
+    border: none;
+    height: 1;
     margin: 0 0 1 0;
+}
+
+#main-area {
+    height: 1fr;
+    layout: horizontal;
+}
+
+/* ── Left panel: session list + dashboard ── */
+
+#left-panel {
+    width: 2fr;
+    min-width: 30;
 }
 
 #session-list {
     height: 1fr;
     background: $background;
 }
+
+#dashboard {
+    height: auto;
+    max-height: 6;
+    background: $surface;
+    border-top: solid $primary;
+    padding: 1 1;
+    color: $text-muted;
+}
+
+/* ── Right panel: session details + preview ── */
+
+#right-panel {
+    width: 3fr;
+    min-width: 40;
+    border-left: solid $primary;
+}
+
+#session-details {
+    height: auto;
+    max-height: 12;
+    background: $surface;
+    border-bottom: solid $primary;
+    padding: 1 1;
+}
+
+#preview-scroll {
+    height: 1fr;
+    background: $background;
+    padding: 0 1;
+}
+
+#preview-content {
+    height: auto;
+}
+
+/* ── List items ── */
 
 .session-item {
     height: auto;
