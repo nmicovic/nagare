@@ -125,7 +125,7 @@ def send_popup(
             popup_cmd += f" --duration {working_seconds}"
 
         subprocess.Popen(
-            ["tmux", "display-popup", "-t", client, "-w", "60%", "-h", "30%", "-E", popup_cmd],
+            ["tmux", "display-popup", "-t", client, "-w", "90%", "-h", "90%", "-E", popup_cmd],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,

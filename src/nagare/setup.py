@@ -28,7 +28,7 @@ os_notify = true
 # Show a rich popup window with full context (briefly steals focus)
 popup = false
 # Seconds before the popup auto-dismisses (only if popup = true)
-popup_timeout = 10
+popup_timeout = 8
 
 # Notification settings when Claude finishes a long-running task
 [notifications.task_complete]
@@ -41,7 +41,7 @@ os_notify = false
 # Show rich popup on task completion
 popup = false
 # Seconds before the popup auto-dismisses
-popup_timeout = 10
+popup_timeout = 8
 # Only notify if Claude was working longer than this many seconds
 # Prevents notification spam from quick back-and-forth responses
 min_working_seconds = 30
@@ -166,6 +166,12 @@ def run_setup() -> None:
         print("Hooks installed in ~/.claude/settings.json")
     else:
         print("Could not install hooks automatically.")
+
+    # Install tmux popup hook for notification overlays
+    print("\nInstalling tmux popup hook...")
+    from nagare.notifications.deliver import install_tmux_popup_hook
+    install_tmux_popup_hook()
+    print("Popup hook installed (pane-focus-in)")
 
     print("\nAdd these lines to your ~/.tmux.conf:\n")
     print(generate_tmux_config())

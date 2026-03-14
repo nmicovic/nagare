@@ -1,13 +1,20 @@
 import argparse
+import os
+import re
+
+from rich.text import Text
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
 
 from nagare.config import load_config
 from nagare.themes import THEMES
 from nagare.tmux import run_tmux
+
+# Strip ANSI background color sequences that clash with Textual themes
+_BG_COLOR_RE = re.compile(r"\x1b\[(?:48;[25](?:;[\d]+)*|49)m")
 
 
 def _human_duration(seconds: int) -> str:
@@ -18,6 +25,15 @@ def _human_duration(seconds: int) -> str:
         return f"{m}m {s}s"
     h, m = divmod(m, 60)
     return f"{h}h {m}m"
+
+
+def _capture_pane(session_name: str) -> str:
+    """Capture the visible content of the session's active pane."""
+    try:
+        raw = run_tmux("capture-pane", "-t", session_name, "-p", "-e")
+        return _BG_COLOR_RE.sub("", raw)
+    except Exception:
+        return ""
 
 
 class PopupNotifApp(App):
@@ -45,65 +61,86 @@ class PopupNotifApp(App):
         self._countdown = popup_timeout
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="popup-container"):
-            yield Static(id="header")
-            yield Static(id="subtitle")
-            yield Static(id="message-body")
-            yield Static("", id="divider")
-            yield Static(id="hint-bar")
-            yield Static(id="countdown")
+        yield Static(id="notif-header")
+        with VerticalScroll(id="preview-scroll"):
+            yield Static(id="preview-content")
+        yield Static(id="hint-bar")
 
     def on_mount(self) -> None:
         config = load_config()
         for t in THEMES.values():
             self.register_theme(t)
-        saved = config.theme if config.theme in THEMES else "tokyonight"
-        self.theme = saved
+        self.theme = config.theme if config.theme in THEMES else "tokyonight"
 
-        # Header: icon + session name
-        if self._event_type == "needs_input":
-            icon = "[#db4b4b]\u25cf[/]"
-            subtitle = "[bold #db4b4b]NEEDS PERMISSION[/bold #db4b4b]"
-        else:
-            icon = "[#00D26A]\u25cf[/]"
-            duration_str = _human_duration(self._working_seconds) if self._working_seconds else ""
-            suffix = f" (worked {duration_str})" if duration_str else ""
-            subtitle = f"[bold #00D26A]TASK COMPLETE{suffix}[/bold #00D26A]"
+        if not os.environ.get("COLORTERM"):
+            os.environ["COLORTERM"] = "truecolor"
 
-        self.query_one("#header", Static).update(
-            f"  {icon}  [b]{self._session_name}[/b]"
-        )
-        self.query_one("#subtitle", Static).update(f"  {subtitle}")
-
-        # Message body
-        msg = self._message or ""
-        # Truncate long messages
-        lines = msg.strip().split("\n")
-        display = "\n     ".join(lines[:4])
-        if len(lines) > 4:
-            display += "..."
-        if len(display) > 200:
-            display = display[:197] + "..."
-        self.query_one("#message-body", Static).update(f"  \U0001f4ac {display}")
-
-        self.query_one("#divider", Static).update("  " + "\u2500" * 36)
-        self.query_one("#hint-bar", Static).update(
-            "  [b]Enter[/b]: Jump to session   [b]Esc[/b]: Dismiss"
-        )
-        self._update_countdown()
+        self._update_header()
+        self._update_preview()
+        self._update_hint_bar()
         self.set_interval(1, self._tick)
+
+    def _update_header(self) -> None:
+        """Build the notification header with status, session name, and message."""
+        if self._event_type == "needs_input":
+            icon = "[#db4b4b]●[/]"
+            label = "[bold #db4b4b]NEEDS INPUT[/bold #db4b4b]"
+        else:
+            icon = "[#00D26A]●[/]"
+            dur = _human_duration(self._working_seconds) if self._working_seconds else ""
+            suffix = f" (worked {dur})" if dur else ""
+            label = f"[bold #00D26A]TASK COMPLETE{suffix}[/bold #00D26A]"
+
+        parts = [f" {icon}  [b]{self._session_name}[/b]  {label}"]
+
+        if self._message:
+            msg = self._message.strip().split("\n")[0]
+            if len(msg) > 100:
+                msg = msg[:97] + "..."
+            parts.append(f" 💬 {msg}")
+
+        self.query_one("#notif-header", Static).update("\n".join(parts))
+
+    def _update_preview(self) -> None:
+        """Capture and display the session's pane content."""
+        content = _capture_pane(self._session_name)
+        if not content.strip():
+            self.query_one("#preview-content", Static).update(
+                "[dim]No pane content available[/dim]"
+            )
+            return
+
+        lines = content.rstrip("\n").split("\n")
+        # Strip leading empty lines
+        while lines and not lines[0].strip():
+            lines.pop(0)
+
+        # Truncate to panel width
+        try:
+            panel = self.query_one("#preview-scroll")
+            max_width = panel.size.width - 2
+            if max_width > 0:
+                lines = [line[:max_width] for line in lines]
+        except Exception:
+            pass
+
+        rich_text = Text.from_ansi("\n".join(lines))
+        self.query_one("#preview-content", Static).update(rich_text)
+        self.query_one("#preview-scroll").scroll_end(animate=False)
+
+    def _update_hint_bar(self) -> None:
+        self.query_one("#hint-bar", Static).update(
+            f" [b]Enter[/b] Jump to session  [b]Esc[/b] Dismiss"
+            f"  │  Auto-closing in {self._countdown}s"
+        )
 
     def _tick(self) -> None:
         self._countdown -= 1
         if self._countdown <= 0:
             self.exit()
             return
-        self._update_countdown()
-
-    def _update_countdown(self) -> None:
-        self.query_one("#countdown", Static).update(
-            f"  [dim]Auto-closing in {self._countdown}s...[/dim]"
-        )
+        self._update_hint_bar()
+        self._update_preview()
 
     def action_dismiss(self) -> None:
         self.exit()
