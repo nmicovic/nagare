@@ -129,23 +129,26 @@ def send_popup(
         if nagare_bin is None:
             return
 
-        parts = [
-            shlex.quote(nagare_bin),
-            "popup-notif",
-            "--session", shlex.quote(session_name),
-            "--event", shlex.quote(event_type),
-            "--message", shlex.quote(message),
-            "--timeout", str(popup_timeout),
-        ]
-        if working_seconds:
-            parts.extend(["--duration", str(working_seconds)])
-        popup_cmd = " ".join(parts)
+        # Sanitize for shell embedding
+        safe_msg = message.replace('"', '\\"').replace("'", "")
+        safe_name = session_name.replace('"', "").replace("'", "")
 
-        # Build the full tmux display-popup command
+        popup_cmd = (
+            f'{nagare_bin} popup-notif'
+            f' --session "{safe_name}"'
+            f' --event {event_type}'
+            f' --message "{safe_msg}"'
+            f' --timeout {popup_timeout}'
+        )
+        if working_seconds:
+            popup_cmd += f" --duration {working_seconds}"
+
+        # Use run-shell -b to execute inside tmux server context.
+        # This is critical — subprocess-spawned display-popup opens a new
+        # window instead of an overlay.
         active = _get_active_session()
-        target = f"-t {shlex.quote(active)} " if active else ""
-        # Use run-shell -b to execute inside tmux server context
-        inner_cmd = f"tmux display-popup {target}-w 60% -h 30% -E {shlex.quote(popup_cmd)}"
+        target = f"-t {active} " if active else ""
+        inner_cmd = f"""tmux display-popup {target}-w 60% -h 30% -E '{popup_cmd}'"""
         run_tmux("run-shell", "-b", inner_cmd)
     except Exception:
         pass
