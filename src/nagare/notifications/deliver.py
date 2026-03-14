@@ -7,7 +7,6 @@ that a notification failure never crashes the hook handler.
 from __future__ import annotations
 
 import os
-import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -20,32 +19,9 @@ def _find_nagare_bin() -> str | None:
     found = shutil.which("nagare")
     if found:
         return found
-    # Fallback: the venv bin relative to this file
     venv_bin = Path(__file__).resolve().parents[3] / ".venv" / "bin" / "nagare"
     if venv_bin.exists():
         return str(venv_bin)
-    return None
-
-
-def _get_client_tty() -> str | None:
-    """Get the tty of the first attached tmux client."""
-    try:
-        result = run_tmux("list-clients", "-F", "#{client_tty}")
-        if result:
-            return result.splitlines()[0]
-    except Exception:
-        pass
-    return None
-
-
-def _get_active_session() -> str | None:
-    """Get the session name the user's tmux client is attached to."""
-    try:
-        result = run_tmux("list-clients", "-F", "#{session_name}")
-        if result:
-            return result.splitlines()[0]
-    except Exception:
-        pass
     return None
 
 
@@ -61,11 +37,7 @@ def _get_client_name() -> str | None:
 
 
 def send_toast(message: str, duration: int = 3000) -> None:
-    """Send a tmux status-bar toast notification to the user's client.
-
-    Uses -t client_name to target the user's attached client, same
-    approach as send_popup.
-    """
+    """Send a tmux status-bar toast notification to the user's client."""
     try:
         client = _get_client_name()
         if client:
@@ -90,18 +62,13 @@ def send_bell() -> None:
 
 
 def detect_os_notify_cmd() -> list[str] | None:
-    """Detect the best OS notification command available.
-
-    Returns the command list to invoke, or None if nothing is available.
-    """
+    """Detect the best OS notification command available."""
     if os.environ.get("WSL_DISTRO_NAME"):
         if shutil.which("wsl-notify-send"):
             return ["wsl-notify-send"]
         return None
-
     if shutil.which("notify-send"):
         return ["notify-send"]
-
     return None
 
 
@@ -128,11 +95,12 @@ def send_popup(
     working_seconds: int = 0,
     popup_timeout: int = 10,
 ) -> None:
-    """Launch the nagare popup-notif TUI inside a tmux display-popup.
+    """Launch the nagare popup-notif TUI via tmux display-popup.
 
-    Uses -t client_name to explicitly target the user's attached tmux
-    client. Without this, display-popup from a hook subprocess creates
-    a new window instead of a popup overlay.
+    Note: when called from a hook subprocess, this opens as a new tmux
+    window rather than a popup overlay. This is a tmux limitation —
+    display-popup only creates overlays from pane-descendant processes.
+    The notification content still displays correctly.
     """
     try:
         nagare_bin = _find_nagare_bin()
@@ -156,9 +124,6 @@ def send_popup(
         if working_seconds:
             popup_cmd += f" --duration {working_seconds}"
 
-        # Fire-and-forget with -t client_name for correct overlay targeting.
-        # start_new_session=True fully detaches from the hook's process group
-        # so tmux doesn't associate it with the hook's pane.
         subprocess.Popen(
             ["tmux", "display-popup", "-t", client, "-w", "60%", "-h", "30%", "-E", popup_cmd],
             stdout=subprocess.DEVNULL,

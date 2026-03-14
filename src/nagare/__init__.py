@@ -23,6 +23,9 @@ def main() -> None:
     elif command == "popup-notif":
         from nagare.popup_notif import run_popup
         run_popup(args[1:])
+    elif command == "popup-dispatch":
+        # Legacy — kept for compatibility but no longer used
+        pass
     elif command == "setup":
         from nagare.setup import run_setup
         run_setup()
