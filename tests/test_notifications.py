@@ -9,17 +9,13 @@ from nagare.notifications.deliver import (
 )
 
 
-@patch("nagare.notifications.deliver._get_active_session", return_value="nagare")
+@patch("nagare.notifications.deliver._get_client_name", return_value="/dev/pts/0")
 @patch("nagare.notifications.deliver.run_tmux")
-def test_send_toast(mock_run, mock_session):
+def test_send_toast(mock_run, mock_client):
     send_toast("session ready", duration=5000)
-    mock_run.assert_called_once()
-    args = mock_run.call_args[0]
-    assert args[0] == "run-shell"
-    assert args[1] == "-b"
-    assert "display-message" in args[2]
-    assert "-t nagare" in args[2]
-    assert "session ready" in args[2]
+    mock_run.assert_called_once_with(
+        "display-message", "-t", "/dev/pts/0", "-d", "5000", "🔴 session ready"
+    )
 
 
 @patch("nagare.notifications.deliver.subprocess.run")
@@ -61,7 +57,6 @@ def test_detect_wsl(mock_which):
 @patch.dict("os.environ", {}, clear=True)
 @patch("shutil.which", return_value="/usr/bin/notify-send")
 def test_detect_native_linux(mock_which):
-    # Ensure WSL_DISTRO_NAME is not set
     import os
     os.environ.pop("WSL_DISTRO_NAME", None)
     result = detect_os_notify_cmd()
@@ -77,19 +72,20 @@ def test_detect_nothing_available(mock_which):
     assert result is None
 
 
-@patch("nagare.notifications.deliver._get_active_session", return_value="nagare")
+@patch("nagare.notifications.deliver._get_client_name", return_value="/dev/pts/0")
 @patch("nagare.notifications.deliver._find_nagare_bin", return_value="/usr/local/bin/nagare")
-@patch("nagare.notifications.deliver.run_tmux")
-def test_send_popup(mock_run, mock_find, mock_session):
+@patch("nagare.notifications.deliver.subprocess.Popen")
+def test_send_popup(mock_popen, mock_find, mock_client):
     send_popup("my-project", "waiting_for_input", "Needs attention", working_seconds=120, popup_timeout=15)
-    mock_run.assert_called_once()
-    args = mock_run.call_args[0]
-    assert args[0] == "run-shell"
-    assert args[1] == "-b"
-    inner_cmd = args[2]
-    assert "display-popup" in inner_cmd
-    assert "-t nagare" in inner_cmd
-    assert "popup-notif" in inner_cmd
-    assert "--session" in inner_cmd
-    assert "my-project" in inner_cmd
-    assert "--duration" in inner_cmd
+    mock_popen.assert_called_once()
+    args = mock_popen.call_args[0][0]
+    assert args[0] == "tmux"
+    assert "display-popup" in args
+    assert "-t" in args
+    assert "/dev/pts/0" in args
+    assert "-E" in args
+    cmd_str = args[-1]
+    assert "popup-notif" in cmd_str
+    assert "--session" in cmd_str
+    assert "my-project" in cmd_str
+    assert "--duration" in cmd_str

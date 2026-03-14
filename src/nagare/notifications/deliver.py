@@ -49,17 +49,29 @@ def _get_active_session() -> str | None:
     return None
 
 
-def send_toast(message: str, duration: int = 3000) -> None:
-    """Send a tmux status-bar toast notification to the user's active session.
+def _get_client_name() -> str | None:
+    """Get the name of the first attached tmux client."""
+    try:
+        result = run_tmux("list-clients", "-F", "#{client_name}")
+        if result:
+            return result.splitlines()[0]
+    except Exception:
+        pass
+    return None
 
-    Uses run-shell -b to execute inside tmux server context, same as popup.
+
+def send_toast(message: str, duration: int = 3000) -> None:
+    """Send a tmux status-bar toast notification to the user's client.
+
+    Uses -t client_name to target the user's attached client, same
+    approach as send_popup.
     """
     try:
-        active = _get_active_session()
-        target = f"-t {shlex.quote(active)} " if active else ""
-        msg = shlex.quote(f"🔴 {message}")
-        inner_cmd = f"tmux display-message {target}-d {duration} {msg}"
-        run_tmux("run-shell", "-b", inner_cmd)
+        client = _get_client_name()
+        if client:
+            run_tmux("display-message", "-t", client, "-d", str(duration), f"🔴 {message}")
+        else:
+            run_tmux("display-message", "-d", str(duration), f"🔴 {message}")
     except Exception:
         pass
 
@@ -118,18 +130,19 @@ def send_popup(
 ) -> None:
     """Launch the nagare popup-notif TUI inside a tmux display-popup.
 
-    Uses `tmux run-shell -b` to execute display-popup from within the tmux
-    server context. This is critical — calling display-popup from a detached
-    subprocess (like a hook) causes tmux to open a new window instead of
-    an overlay popup. run-shell -b keeps the command inside tmux's own
-    execution context where popups work correctly.
+    Uses -t client_name to explicitly target the user's attached tmux
+    client. Without this, display-popup from a hook subprocess creates
+    a new window instead of a popup overlay.
     """
     try:
         nagare_bin = _find_nagare_bin()
         if nagare_bin is None:
             return
 
-        # Sanitize for shell embedding
+        client = _get_client_name()
+        if client is None:
+            return
+
         safe_msg = message.replace('"', '\\"').replace("'", "")
         safe_name = session_name.replace('"', "").replace("'", "")
 
@@ -143,12 +156,12 @@ def send_popup(
         if working_seconds:
             popup_cmd += f" --duration {working_seconds}"
 
-        # Use run-shell -b to execute inside tmux server context.
-        # This is critical — subprocess-spawned display-popup opens a new
-        # window instead of an overlay.
-        active = _get_active_session()
-        target = f"-t {active} " if active else ""
-        inner_cmd = f"""tmux display-popup {target}-w 60% -h 30% -E '{popup_cmd}'"""
-        run_tmux("run-shell", "-b", inner_cmd)
+        # Fire-and-forget with -t client_name for correct overlay targeting
+        subprocess.Popen(
+            ["tmux", "display-popup", "-t", client, "-w", "60%", "-h", "30%", "-E", popup_cmd],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
     except Exception:
         pass
