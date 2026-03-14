@@ -1,0 +1,45 @@
+Screen {
+    align: center middle;
+    background: $background;
+}
+
+#popup-container {
+    width: 50;
+    height: auto;
+    max-height: 16;
+    background: $surface;
+    border: solid $primary;
+    padding: 1 1;
+}
+
+#header {
+    height: auto;
+    color: $foreground;
+}
+
+#subtitle {
+    height: auto;
+    padding: 0 0 1 0;
+}
+
+#message-body {
+    height: auto;
+    padding: 0 0 1 0;
+    color: $foreground;
+}
+
+#divider {
+    height: 1;
+    color: $panel;
+}
+
+#hint-bar {
+    height: auto;
+    color: $text-muted;
+    padding: 0;
+}
+
+#countdown {
+    height: auto;
+    color: $text-muted;
+}

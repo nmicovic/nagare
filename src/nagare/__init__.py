@@ -20,10 +20,13 @@ def main() -> None:
     elif command == "hook-state":
         from nagare.hooks import handle_hook
         handle_hook()
+    elif command == "popup-notif":
+        from nagare.popup_notif import run_popup
+        run_popup(args[1:])
     elif command == "setup":
         from nagare.setup import run_setup
         run_setup()
     else:
         print(f"Unknown command: {command}")
-        print("Usage: nagare [pick|notifs|setup|hook-state]")
+        print("Usage: nagare [pick|notifs|popup-notif|setup|hook-state]")
         sys.exit(1)
