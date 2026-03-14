@@ -17,9 +17,6 @@ def main() -> None:
         from nagare.notifs import NotifsApp
         app = NotifsApp()
         app.run()
-    elif command == "daemon":
-        from nagare.daemon import run_daemon
-        run_daemon()
     elif command == "hook-state":
         from nagare.hooks import handle_hook
         handle_hook()
@@ -28,5 +25,5 @@ def main() -> None:
         run_setup()
     else:
         print(f"Unknown command: {command}")
-        print("Usage: nagare [pick|notifs|daemon|setup|hook-state]")
+        print("Usage: nagare [pick|notifs|setup|hook-state]")
         sys.exit(1)
