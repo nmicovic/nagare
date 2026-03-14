@@ -6,12 +6,14 @@ def test_session_creation():
         name="my-project",
         session_id="$1",
         path="/home/user/projects/my-project",
+        window_index=0,
         pane_index=0,
         status=SessionStatus.IDLE,
     )
     assert session.name == "my-project"
     assert session.session_id == "$1"
     assert session.path == "/home/user/projects/my-project"
+    assert session.window_index == 0
     assert session.pane_index == 0
     assert session.status == SessionStatus.IDLE
 
@@ -21,15 +23,20 @@ def test_session_display_name():
         name="my-project",
         session_id="$1",
         path="/home/user/projects/my-project",
+        window_index=0,
         pane_index=0,
         status=SessionStatus.IDLE,
     )
-    assert session.display == "● my-project"
+    assert session.display == "🟢 my-project"
 
 
 def test_session_status_icons():
-    alive = Session(name="a", session_id="$1", path="/tmp", pane_index=0, status=SessionStatus.IDLE)
-    dead = Session(name="b", session_id="$2", path="/tmp", pane_index=0, status=SessionStatus.DEAD)
+    idle = Session(name="a", session_id="$1", path="/tmp", window_index=0, pane_index=0, status=SessionStatus.IDLE)
+    waiting = Session(name="b", session_id="$2", path="/tmp", window_index=0, pane_index=0, status=SessionStatus.WAITING_INPUT)
+    running = Session(name="c", session_id="$3", path="/tmp", window_index=0, pane_index=0, status=SessionStatus.RUNNING)
+    dead = Session(name="d", session_id="$4", path="/tmp", window_index=0, pane_index=0, status=SessionStatus.DEAD)
 
-    assert alive.status_icon == "●"
-    assert dead.status_icon == "○"
+    assert idle.status_icon == "🟢"
+    assert waiting.status_icon == "🔴"
+    assert running.status_icon == "🟡"
+    assert dead.status_icon == "⚪"

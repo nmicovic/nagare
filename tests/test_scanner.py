@@ -17,12 +17,17 @@ def test_parse_sessions_empty():
 
 
 def test_find_claude_pane_found():
-    pane_output = "0:zsh\n1:claude\n2:zsh"
-    assert _find_claude_pane(pane_output) == 1
+    pane_output = "0:0:zsh\n0:1:claude\n0:2:zsh"
+    assert _find_claude_pane(pane_output) == (0, 1)
+
+
+def test_find_claude_pane_in_second_window():
+    pane_output = "0:0:zsh\n1:0:zsh\n1:1:claude"
+    assert _find_claude_pane(pane_output) == (1, 1)
 
 
 def test_find_claude_pane_not_found():
-    pane_output = "0:zsh\n1:vim"
+    pane_output = "0:0:zsh\n0:1:vim"
     assert _find_claude_pane(pane_output) is None
 
 
@@ -31,12 +36,12 @@ def test_scan_sessions(mock_run):
     mock_run.side_effect = [
         # list-sessions
         "proj-a:$1:/home/user/a\nproj-b:$2:/home/user/b",
-        # list-panes for proj-a — has claude
-        "0:claude",
+        # list-panes -s for proj-a — has claude in window 0, pane 0
+        "0:0:claude",
         # capture-pane for proj-a — shows a prompt (waiting for input)
         "Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel",
-        # list-panes for proj-b — no claude
-        "0:zsh",
+        # list-panes -s for proj-b — no claude
+        "0:0:zsh",
     ]
     sessions = scan_sessions()
     assert len(sessions) == 1
@@ -44,6 +49,7 @@ def test_scan_sessions(mock_run):
         name="proj-a",
         session_id="$1",
         path="/home/user/a",
+        window_index=0,
         pane_index=0,
         status=SessionStatus.WAITING_INPUT,
     )

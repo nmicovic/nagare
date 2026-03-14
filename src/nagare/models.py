@@ -10,16 +10,16 @@ class SessionStatus(Enum):
 
 
 STATUS_ICONS: dict[SessionStatus, str] = {
-    SessionStatus.WAITING_INPUT: "❓",
-    SessionStatus.RUNNING: "⚙",
-    SessionStatus.IDLE: "●",
-    SessionStatus.DEAD: "○",
+    SessionStatus.WAITING_INPUT: "🔴",
+    SessionStatus.RUNNING: "🟡",
+    SessionStatus.IDLE: "🟢",
+    SessionStatus.DEAD: "⚪",
 }
 
 
 STATUS_LABELS: dict[SessionStatus, str] = {
     SessionStatus.WAITING_INPUT: "Waiting for input",
-    SessionStatus.RUNNING: "Running",
+    SessionStatus.RUNNING: "Working",
     SessionStatus.IDLE: "Idle",
     SessionStatus.DEAD: "Exited",
 }
@@ -37,9 +37,11 @@ class Session:
     name: str
     session_id: str
     path: str
+    window_index: int
     pane_index: int
     status: SessionStatus
     details: SessionDetails = SessionDetails()
+    last_message: str = ""
 
     @property
     def status_icon(self) -> str:

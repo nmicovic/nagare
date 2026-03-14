@@ -5,20 +5,19 @@ from nagare.models import Session, SessionStatus
 
 def _make_session(name: str, status: SessionStatus) -> Session:
     return Session(name=name, session_id="$1", path=f"/home/user/{name}",
-                   pane_index=0, status=status)
+                   window_index=0, pane_index=0, status=status)
 
 
+@patch("nagare.daemon._get_active_session", return_value="other-session")
 @patch("nagare.daemon.scan_sessions")
-def test_detects_new_waiting_session(mock_scan):
+def test_detects_new_waiting_session(mock_scan, _):
     backend = MagicMock()
     store = MagicMock()
     monitor = SessionMonitor(backend, store)
 
-    # First poll: session is running
     mock_scan.return_value = [_make_session("proj-a", SessionStatus.RUNNING)]
     monitor.poll()
 
-    # Second poll: session now waiting
     mock_scan.return_value = [_make_session("proj-a", SessionStatus.WAITING_INPUT)]
     monitor.poll()
 
@@ -27,8 +26,9 @@ def test_detects_new_waiting_session(mock_scan):
     store.add.assert_called_once()
 
 
+@patch("nagare.daemon._get_active_session", return_value="other-session")
 @patch("nagare.daemon.scan_sessions")
-def test_no_duplicate_notification(mock_scan):
+def test_no_duplicate_notification(mock_scan, _):
     backend = MagicMock()
     store = MagicMock()
     monitor = SessionMonitor(backend, store)
@@ -38,17 +38,16 @@ def test_no_duplicate_notification(mock_scan):
     monitor.poll()
     monitor.poll()
 
-    # Only notified once (on first detection)
     assert backend.notify.call_count == 1
 
 
+@patch("nagare.daemon._get_active_session", return_value="other-session")
 @patch("nagare.daemon.scan_sessions")
-def test_renotifies_after_status_change(mock_scan):
+def test_renotifies_after_status_change(mock_scan, _):
     backend = MagicMock()
     store = MagicMock()
     monitor = SessionMonitor(backend, store)
 
-    # waiting -> running -> waiting should notify twice
     mock_scan.return_value = [_make_session("proj-a", SessionStatus.WAITING_INPUT)]
     monitor.poll()
     mock_scan.return_value = [_make_session("proj-a", SessionStatus.RUNNING)]
@@ -59,8 +58,9 @@ def test_renotifies_after_status_change(mock_scan):
     assert backend.notify.call_count == 2
 
 
+@patch("nagare.daemon._get_active_session", return_value="other-session")
 @patch("nagare.daemon.scan_sessions")
-def test_no_notification_for_running(mock_scan):
+def test_no_notification_for_running(mock_scan, _):
     backend = MagicMock()
     store = MagicMock()
     monitor = SessionMonitor(backend, store)
@@ -69,3 +69,17 @@ def test_no_notification_for_running(mock_scan):
     monitor.poll()
 
     backend.notify.assert_not_called()
+
+
+@patch("nagare.daemon._get_active_session", return_value="proj-a")
+@patch("nagare.daemon.scan_sessions")
+def test_no_notification_for_active_session(mock_scan, _):
+    backend = MagicMock()
+    store = MagicMock()
+    monitor = SessionMonitor(backend, store)
+
+    mock_scan.return_value = [_make_session("proj-a", SessionStatus.WAITING_INPUT)]
+    monitor.poll()
+
+    backend.notify.assert_not_called()
+    store.add.assert_not_called()
