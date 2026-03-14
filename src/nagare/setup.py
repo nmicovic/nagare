@@ -7,6 +7,66 @@ from nagare.config import NagareConfig, load_config, CONFIG_PATH
 DATA_DIR = Path.home() / ".local" / "share" / "nagare"
 CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 
+_DEFAULT_CONFIG = """\
+# nagare configuration
+# See docs for full reference: https://github.com/nagare/nagare
+
+# ── Notifications ──────────────────────────────────────────────
+# Master switch — set to false to disable all notifications
+[notifications]
+enabled = true
+
+# Notification settings when Claude needs your input
+# (permission prompts, elicitation dialogs)
+[notifications.needs_input]
+# Show a tmux status bar toast (auto-closes after 3 seconds)
+toast = true
+# Send terminal bell (\\a) — triggers OS/terminal alerts
+bell = true
+# Send native OS desktop notification (notify-send or WSL equivalent)
+os_notify = true
+# Show a rich popup window with full context (briefly steals focus)
+popup = false
+# Seconds before the popup auto-dismisses (only if popup = true)
+popup_timeout = 10
+
+# Notification settings when Claude finishes a long-running task
+[notifications.task_complete]
+# Show a tmux status bar toast on task completion
+toast = true
+# Send terminal bell on task completion
+bell = false
+# Send native OS notification on task completion
+os_notify = false
+# Show rich popup on task completion
+popup = false
+# Seconds before the popup auto-dismisses
+popup_timeout = 10
+# Only notify if Claude was working longer than this many seconds
+# Prevents notification spam from quick back-and-forth responses
+min_working_seconds = 30
+
+# ── Per-Session Overrides ──────────────────────────────────────
+# Override notification settings for specific tmux sessions.
+# Only list exceptions — unlisted sessions use the defaults above.
+#
+# Silence a noisy session:
+# [notifications.sessions.playground]
+# enabled = false
+#
+# Full popup treatment for an important session:
+# [notifications.sessions.production-backend]
+# popup = true
+# os_notify = true
+
+# ── Appearance ─────────────────────────────────────────────────
+[appearance]
+# Theme name — cycle with Ctrl+t in the picker
+# Available: tokyonight, tokyonight-storm, tokyonight-light, catppuccin-mocha,
+#            catppuccin-latte, gruvbox-dark, gruvbox-light, nord, dracula, solarized-dark
+theme = "tokyonight"
+"""
+
 
 def generate_tmux_config(config: NagareConfig | None = None) -> str:
     if config is None:
@@ -92,16 +152,7 @@ def run_setup() -> None:
     config_path = Path(CONFIG_PATH)
     if not config_path.exists():
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(
-            "[notifications]\n"
-            "backend = \"tmux\"\n"
-            "duration = 2000\n"
-            "poll_interval = 3\n"
-            "\n"
-            "[picker]\n"
-            "popup_width = \"80%\"\n"
-            "popup_height = \"80%\"\n"
-        )
+        config_path.write_text(_DEFAULT_CONFIG)
         print(f"Created config: {config_path}")
     else:
         print(f"Config already exists: {config_path}")
