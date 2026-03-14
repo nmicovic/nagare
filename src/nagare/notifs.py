@@ -55,6 +55,8 @@ class NotifsApp(App):
         Binding("escape", "quit", "Close", show=False),
         Binding("d", "dismiss", "Dismiss", show=False),
         Binding("D", "dismiss_all", "Dismiss All", show=False),
+        Binding("1", "show_tab('tab-notifs')", "Notifications", show=False),
+        Binding("2", "show_tab('tab-settings')", "Settings", show=False),
     ]
 
     def __init__(self, store: NotificationStore | None = None) -> None:
@@ -114,11 +116,15 @@ class NotifsApp(App):
                     )
 
         yield Static(
+            "[b]1[/b] Notifications  [b]2[/b] Settings  │  "
             "[b]Enter[/b] Jump  [b]d[/b] Dismiss  [b]D[/b] Dismiss all  [b]Esc[/b] Close",
             id="hint-bar",
         )
 
     def on_mount(self) -> None:
+        # Disable Tab key switching tabs — use 1/2 keys instead
+        tabs = self.query_one("#tabs", TabbedContent)
+        tabs.can_focus = False
         config = self._config
         for t in THEMES.values():
             self.register_theme(t)
@@ -147,6 +153,9 @@ class NotifsApp(App):
                     classes="notif-item",
                 )
             )
+
+    def action_show_tab(self, tab_id: str) -> None:
+        self.query_one("#tabs", TabbedContent).active = tab_id
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         notifs = self._store.list_all()
