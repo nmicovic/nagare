@@ -21,7 +21,7 @@ def _find_nagare_bin() -> str | None:
     if found:
         return found
     # Fallback: the venv bin relative to this file
-    venv_bin = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "nagare"
+    venv_bin = Path(__file__).resolve().parents[3] / ".venv" / "bin" / "nagare"
     if venv_bin.exists():
         return str(venv_bin)
     return None
@@ -125,10 +125,10 @@ def send_popup(
             parts.extend(["--duration", str(working_seconds)])
         cmd_str = " ".join(parts)
 
-        tmux_args = ["tmux", "display-popup", "-w60%", "-h30%", "-E", cmd_str]
+        tmux_args = ["tmux", "display-popup", "-w", "60%", "-h", "30%", "-E", cmd_str]
         client = _get_client_tty()
         if client:
-            tmux_args = ["tmux", "display-popup", "-c", client, "-w60%", "-h30%", "-E", cmd_str]
+            tmux_args = ["tmux", "display-popup", "-c", client, "-w", "60%", "-h", "30%", "-E", cmd_str]
 
         # Fire-and-forget: don't wait for popup to close.
         # subprocess.run would block until the popup exits, causing the
