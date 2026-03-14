@@ -118,16 +118,18 @@ class PickerApp(App):
             os.environ["COLORTERM"] = "truecolor"
 
         self._topics = load_conversation_topics()
-        self._sessions = scan_sessions()
-        self._sessions.sort(key=lambda s: _STATUS_SORT.get(s.status, 99))
-        self._filtered_sessions = list(self._sessions)
-        self._rebuild_list()
-        self._update_title_bar()
+        self._refresh_sessions()
         self._update_hint_bar()
         self.query_one("#search", Input).focus()
+        self.set_interval(2, self._poll_state)
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        query = event.value.strip()
+    def _refresh_sessions(self) -> None:
+        self._sessions = scan_sessions()
+        self._sessions.sort(key=lambda s: _STATUS_SORT.get(s.status, 99))
+        self._apply_filter()
+
+    def _apply_filter(self) -> None:
+        query = self.query_one("#search", Input).value.strip()
         if not query:
             self._filtered_sessions = list(self._sessions)
         else:
@@ -136,6 +138,21 @@ class PickerApp(App):
             ]
         self._rebuild_list()
         self._update_title_bar()
+
+    def _poll_state(self) -> None:
+        old_snapshot = {s.name: s.status for s in self._sessions}
+        self._sessions = scan_sessions()
+        self._sessions.sort(key=lambda s: _STATUS_SORT.get(s.status, 99))
+        new_snapshot = {s.name: s.status for s in self._sessions}
+        if old_snapshot != new_snapshot:
+            lv = self.query_one("#session-list", ListView)
+            old_idx = lv.index
+            self._apply_filter()
+            if old_idx is not None and 0 <= old_idx < len(self._filtered_sessions):
+                lv.index = old_idx
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self._apply_filter()
 
     def _rebuild_list(self) -> None:
         lv = self.query_one("#session-list", ListView)
