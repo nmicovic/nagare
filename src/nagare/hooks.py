@@ -262,12 +262,19 @@ def _get_session_name(cwd: str) -> str | None:
 
 
 def _is_active_session(session_name: str) -> bool:
-    """Check if this session is the one the user is currently viewing."""
+    """Check if this session is the one the user is currently viewing.
+
+    Uses tmux list-clients instead of display-message because hooks run
+    inside the session they're reporting about, so display-message would
+    always return that session's name.
+    """
     try:
         result = subprocess.run(
-            ["tmux", "display-message", "-p", "#{session_name}"],
+            ["tmux", "list-clients", "-F", "#{session_name}"],
             capture_output=True, text=True, timeout=2,
         )
-        return result.stdout.strip() == session_name
+        # Any attached client viewing this session means it's active
+        active_sessions = result.stdout.strip().splitlines()
+        return session_name in active_sessions
     except Exception:
         return False
