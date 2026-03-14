@@ -38,12 +38,23 @@ def _get_client_tty() -> str | None:
     return None
 
 
-def send_toast(message: str, duration: int = 3000) -> None:
-    """Send a tmux status-bar toast notification to the user's client."""
+def _get_active_session() -> str | None:
+    """Get the session name the user's tmux client is attached to."""
     try:
-        client = _get_client_tty()
-        if client:
-            run_tmux("display-message", "-c", client, "-d", str(duration), f"🔴 {message}")
+        result = run_tmux("list-clients", "-F", "#{session_name}")
+        if result:
+            return result.splitlines()[0]
+    except Exception:
+        pass
+    return None
+
+
+def send_toast(message: str, duration: int = 3000) -> None:
+    """Send a tmux status-bar toast notification to the user's active session."""
+    try:
+        active = _get_active_session()
+        if active:
+            run_tmux("display-message", "-t", active, "-d", str(duration), f"🔴 {message}")
         else:
             run_tmux("display-message", "-d", str(duration), f"🔴 {message}")
     except Exception:
@@ -126,9 +137,9 @@ def send_popup(
         cmd_str = " ".join(parts)
 
         tmux_args = ["tmux", "display-popup", "-w", "60%", "-h", "30%", "-E", cmd_str]
-        client = _get_client_tty()
-        if client:
-            tmux_args = ["tmux", "display-popup", "-c", client, "-w", "60%", "-h", "30%", "-E", cmd_str]
+        active = _get_active_session()
+        if active:
+            tmux_args = ["tmux", "display-popup", "-t", active, "-w", "60%", "-h", "30%", "-E", cmd_str]
 
         # Fire-and-forget: don't wait for popup to close.
         # subprocess.run would block until the popup exits, causing the
