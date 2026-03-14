@@ -164,17 +164,23 @@ class NotifsApp(App):
         nc = self._notif_config
         lv = self.query_one("#settings-list", ListView)
         lv.clear()
-        for widget_id, label, kind in _SETTINGS:
+        first_interactive = None
+        for i, (widget_id, label, kind) in enumerate(_SETTINGS):
             if widget_id == "section":
                 lv.append(_make_section_header(label))
             else:
                 value = _get_setting_value(nc, widget_id)
                 lv.append(_make_setting_item(widget_id, label, kind, value))
+                if first_interactive is None:
+                    first_interactive = i
         # Footer
         lv.append(ListItem(
             Static("  [dim]Changes saved automatically to ~/.config/nagare/config.toml[/dim]"),
             disabled=True,
         ))
+        # Start on first interactive item, skipping section headers
+        if first_interactive is not None:
+            lv.index = first_interactive
 
     def action_show_tab(self, tab_id: str) -> None:
         self.query_one("#tabs", TabbedContent).active = tab_id
