@@ -27,10 +27,25 @@ def _find_nagare_bin() -> str | None:
     return None
 
 
-def send_toast(message: str, duration: int = 3000) -> None:
-    """Send a tmux status-bar toast notification."""
+def _get_client_tty() -> str | None:
+    """Get the tty of the first attached tmux client."""
     try:
-        run_tmux("display-message", "-d", str(duration), f"🔴 {message}")
+        result = run_tmux("list-clients", "-F", "#{client_tty}")
+        if result:
+            return result.splitlines()[0]
+    except Exception:
+        pass
+    return None
+
+
+def send_toast(message: str, duration: int = 3000) -> None:
+    """Send a tmux status-bar toast notification to the user's client."""
+    try:
+        client = _get_client_tty()
+        if client:
+            run_tmux("display-message", "-c", client, "-d", str(duration), f"🔴 {message}")
+        else:
+            run_tmux("display-message", "-d", str(duration), f"🔴 {message}")
     except Exception:
         pass
 
@@ -107,6 +122,10 @@ def send_popup(
             parts.extend(["--duration", str(working_seconds)])
         cmd_str = " ".join(parts)
 
-        run_tmux("display-popup", "-w60%", "-h30%", "-E", cmd_str)
+        client = _get_client_tty()
+        if client:
+            run_tmux("display-popup", "-c", client, "-w60%", "-h30%", "-E", cmd_str)
+        else:
+            run_tmux("display-popup", "-w60%", "-h30%", "-E", cmd_str)
     except Exception:
         pass

@@ -9,10 +9,13 @@ from nagare.notifications.deliver import (
 )
 
 
+@patch("nagare.notifications.deliver._get_client_tty", return_value="/dev/pts/0")
 @patch("nagare.notifications.deliver.run_tmux")
-def test_send_toast(mock_run):
+def test_send_toast(mock_run, mock_client):
     send_toast("session ready", duration=5000)
-    mock_run.assert_called_once_with("display-message", "-d", "5000", "🔴 session ready")
+    mock_run.assert_called_once_with(
+        "display-message", "-c", "/dev/pts/0", "-d", "5000", "🔴 session ready"
+    )
 
 
 @patch("nagare.notifications.deliver.subprocess.run")
@@ -70,18 +73,19 @@ def test_detect_nothing_available(mock_which):
     assert result is None
 
 
+@patch("nagare.notifications.deliver._get_client_tty", return_value="/dev/pts/0")
 @patch("nagare.notifications.deliver.run_tmux")
 @patch("nagare.notifications.deliver._find_nagare_bin", return_value="/usr/local/bin/nagare")
-def test_send_popup(mock_find, mock_run):
+def test_send_popup(mock_find, mock_run, mock_client):
     send_popup("my-project", "waiting_for_input", "Needs attention", working_seconds=120, popup_timeout=15)
     mock_run.assert_called_once()
     args = mock_run.call_args[0]
     assert args[0] == "display-popup"
-    assert "-w60%" in args
-    assert "-h30%" in args
+    assert "-c" in args
+    assert "/dev/pts/0" in args
     assert "-E" in args
     # The command after -E should be a single shell string
-    cmd_str = args[4]  # The string after -E
+    cmd_str = args[-1]
     assert "popup-notif" in cmd_str
     assert "--session" in cmd_str
     assert "my-project" in cmd_str
