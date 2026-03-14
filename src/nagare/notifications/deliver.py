@@ -156,12 +156,15 @@ def send_popup(
         if working_seconds:
             popup_cmd += f" --duration {working_seconds}"
 
-        # Fire-and-forget with -t client_name for correct overlay targeting
+        # Fire-and-forget with -t client_name for correct overlay targeting.
+        # start_new_session=True fully detaches from the hook's process group
+        # so tmux doesn't associate it with the hook's pane.
         subprocess.Popen(
             ["tmux", "display-popup", "-t", client, "-w", "60%", "-h", "30%", "-E", popup_cmd],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
+            start_new_session=True,
         )
     except Exception:
         pass
