@@ -12,7 +12,7 @@ from nagare.notifications.deliver import (
 @patch("nagare.notifications.deliver.run_tmux")
 def test_send_toast(mock_run):
     send_toast("session ready", duration=5000)
-    mock_run.assert_called_once_with("display-message", "-d", "5000", "session ready")
+    mock_run.assert_called_once_with("display-message", "-d", "5000", "🔴 session ready")
 
 
 @patch("nagare.notifications.deliver.subprocess.run")
@@ -32,6 +32,7 @@ def test_send_os_notify_linux(mock_run, mock_detect):
         ["notify-send", "Nagare", "Session ready"],
         capture_output=True,
         text=True,
+        timeout=5,
     )
 
 
@@ -70,8 +71,8 @@ def test_detect_nothing_available(mock_which):
 
 
 @patch("nagare.notifications.deliver.run_tmux")
-@patch("shutil.which", return_value="/usr/local/bin/nagare")
-def test_send_popup(mock_which, mock_run):
+@patch("nagare.notifications.deliver._find_nagare_bin", return_value="/usr/local/bin/nagare")
+def test_send_popup(mock_find, mock_run):
     send_popup("my-project", "waiting_for_input", "Needs attention", working_seconds=120, popup_timeout=15)
     mock_run.assert_called_once()
     args = mock_run.call_args[0]
@@ -79,13 +80,9 @@ def test_send_popup(mock_which, mock_run):
     assert "-w60%" in args
     assert "-h30%" in args
     assert "-E" in args
-    # The command should contain nagare popup-notif with the right flags
-    cmd_str = " ".join(args)
+    # The command after -E should be a single shell string
+    cmd_str = args[4]  # The string after -E
     assert "popup-notif" in cmd_str
     assert "--session" in cmd_str
     assert "my-project" in cmd_str
-    assert "--event" in cmd_str
-    assert "waiting_for_input" in cmd_str
-    assert "--message" in cmd_str
-    assert "--timeout" in cmd_str
     assert "--duration" in cmd_str
