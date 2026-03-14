@@ -6,8 +6,9 @@ from textual.binding import Binding
 from textual.widgets import OptionList, Static
 from textual.widgets.option_list import Option
 
+from nagare.config import load_config
 from nagare.notifications.store import NotificationStore
-from nagare.themes import THEMES, DEFAULT_THEME
+from nagare.themes import THEMES
 from nagare.tmux import run_tmux
 
 STORE_PATH = Path.home() / ".local" / "share" / "nagare" / "notifications.json"
@@ -41,9 +42,10 @@ class NotifsApp(App):
         )
 
     def on_mount(self) -> None:
+        config = load_config()
         for t in THEMES.values():
             self.register_theme(t)
-        self.theme = DEFAULT_THEME
+        self.theme = config.theme if config.theme in THEMES else "tokyonight"
 
         if not os.environ.get("COLORTERM"):
             os.environ["COLORTERM"] = "truecolor"

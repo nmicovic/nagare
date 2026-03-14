@@ -1,3 +1,4 @@
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ class NagareConfig:
     poll_interval: int = 3
     picker_width: str = "80%"
     picker_height: str = "80%"
+    theme: str = "tokyonight"
 
 
 def load_config() -> NagareConfig:
@@ -24,6 +26,7 @@ def load_config() -> NagareConfig:
 
     notifs = data.get("notifications", {})
     picker = data.get("picker", {})
+    appearance = data.get("appearance", {})
 
     return NagareConfig(
         notification_backend=notifs.get("backend", "tmux"),
@@ -31,4 +34,26 @@ def load_config() -> NagareConfig:
         poll_interval=notifs.get("poll_interval", 3),
         picker_width=picker.get("popup_width", "80%"),
         picker_height=picker.get("popup_height", "80%"),
+        theme=appearance.get("theme", "tokyonight"),
     )
+
+
+def save_theme(theme_name: str) -> None:
+    path = Path(CONFIG_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if path.exists():
+        content = path.read_text()
+        if re.search(r"^\[appearance\]", content, re.MULTILINE):
+            content = re.sub(
+                r'(^\[appearance\].*?theme\s*=\s*)"[^"]*"',
+                rf'\1"{theme_name}"',
+                content,
+                flags=re.MULTILINE | re.DOTALL,
+            )
+        else:
+            content = content.rstrip() + f'\n\n[appearance]\ntheme = "{theme_name}"\n'
+    else:
+        content = f'[appearance]\ntheme = "{theme_name}"\n'
+
+    path.write_text(content)
