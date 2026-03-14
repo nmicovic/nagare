@@ -6,6 +6,10 @@ Screen {
     height: 1fr;
 }
 
+TabbedContent ContentSwitcher {
+    height: 1fr;
+}
+
 /* ── Notifications tab ── */
 
 #notif-list {

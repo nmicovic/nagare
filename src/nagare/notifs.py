@@ -136,12 +136,10 @@ class NotifsApp(App):
         if not os.environ.get("COLORTERM"):
             os.environ["COLORTERM"] = "truecolor"
 
-        # Disable Tab key switching tabs
-        tabs = self.query_one("#tabs", TabbedContent)
-        tabs.can_focus = False
-
         self._rebuild_list()
         self._rebuild_settings()
+        # Focus the notification list so arrow keys work immediately
+        self.query_one("#notif-list", ListView).focus()
 
     def _rebuild_list(self) -> None:
         notifs = self._store.list_all()
@@ -180,6 +178,11 @@ class NotifsApp(App):
 
     def action_show_tab(self, tab_id: str) -> None:
         self.query_one("#tabs", TabbedContent).active = tab_id
+        # Focus the ListView in the target tab so arrows work immediately
+        if tab_id == "tab-notifs":
+            self.call_after_refresh(self.query_one("#notif-list", ListView).focus)
+        elif tab_id == "tab-settings":
+            self.call_after_refresh(self.query_one("#settings-list", ListView).focus)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         lv = event.list_view
