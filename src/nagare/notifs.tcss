@@ -4,6 +4,22 @@ Screen {
 
 #notif-list {
     height: 1fr;
+    background: $background;
+}
+
+.notif-item {
+    height: auto;
+    padding: 0;
+}
+
+ListItem {
+    background: $background;
+    padding: 1 1 0 1;
+    border-bottom: solid $surface;
+}
+
+ListItem.-highlight {
+    background: $surface;
 }
 
 #hint-bar {
