@@ -97,25 +97,25 @@ def _install_hooks() -> bool:
 
     nagare_hooks = {
         "UserPromptSubmit": [
-            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5}]}
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 10000}]}
         ],
         "Stop": [
-            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5}]}
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 10000}]}
         ],
         "Notification": [
             {
                 "matcher": "idle_prompt|permission_prompt|elicitation_dialog",
-                "hooks": [{"type": "command", "command": hook_command, "timeout": 5}],
+                "hooks": [{"type": "command", "command": hook_command, "timeout": 10000}],
             }
         ],
         "PreToolUse": [
-            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5}]}
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 10000}]}
         ],
         "SessionStart": [
-            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5}]}
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 10000}]}
         ],
         "SessionEnd": [
-            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5}]}
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 10000}]}
         ],
     }
 
