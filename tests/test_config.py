@@ -2,6 +2,7 @@ import os
 from unittest.mock import patch
 from nagare.config import (
     load_config,
+    save_notification_config,
     NagareConfig,
     NotificationEventConfig,
     NotificationConfig,
@@ -198,3 +199,52 @@ def test_empty_notifications_section(tmp_path):
     assert cfg.notifications.enabled is True
     assert cfg.notifications.needs_input.toast is True
     assert cfg.notifications.sessions == {}
+
+
+def test_save_notification_config_roundtrip(tmp_path):
+    """Save config then load it — values should match."""
+    config_file = tmp_path / "config.toml"
+    # Start with an existing appearance section
+    config_file.write_text('[appearance]\ntheme = "nord"\n')
+
+    nc = NotificationConfig(
+        enabled=False,
+        needs_input=NotificationEventConfig(
+            toast=False, bell=True, os_notify=False,
+            popup=True, popup_timeout=15, min_working_seconds=0,
+        ),
+        task_complete=NotificationEventConfig(
+            toast=True, bell=False, os_notify=True,
+            popup=False, popup_timeout=20, min_working_seconds=60,
+        ),
+        sessions={"playground": {"enabled": False}},
+    )
+
+    with patch("nagare.config.CONFIG_PATH", str(config_file)):
+        save_notification_config(nc)
+        cfg = load_config()
+
+    assert cfg.notifications.enabled is False
+    assert cfg.notifications.needs_input.toast is False
+    assert cfg.notifications.needs_input.bell is True
+    assert cfg.notifications.needs_input.popup is True
+    assert cfg.notifications.needs_input.popup_timeout == 15
+    assert cfg.notifications.task_complete.toast is True
+    assert cfg.notifications.task_complete.os_notify is True
+    assert cfg.notifications.task_complete.min_working_seconds == 60
+    assert cfg.notifications.sessions["playground"]["enabled"] is False
+    # Appearance section preserved
+    assert cfg.theme == "nord"
+
+
+def test_save_notification_config_creates_file(tmp_path):
+    """Save config when no file exists."""
+    config_file = tmp_path / "config.toml"
+    nc = NotificationConfig()
+
+    with patch("nagare.config.CONFIG_PATH", str(config_file)):
+        save_notification_config(nc)
+        cfg = load_config()
+
+    assert cfg.notifications.enabled is True
+    assert cfg.notifications.needs_input.toast is True
