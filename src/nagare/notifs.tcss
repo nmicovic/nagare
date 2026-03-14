@@ -18,58 +18,54 @@ Screen {
     padding: 0;
 }
 
+/* ── Settings tab ── */
+
+#settings-list {
+    height: 1fr;
+    background: $background;
+}
+
+.section-header {
+    height: 1;
+    color: $primary;
+    padding: 0;
+}
+
+.setting-row {
+    layout: horizontal;
+    height: auto;
+    width: 1fr;
+    align: left middle;
+}
+
+.setting-label {
+    width: 1fr;
+    height: auto;
+    content-align: left middle;
+}
+
+.setting-input {
+    width: 10;
+    height: 1;
+    border: none;
+}
+
+/* ── Shared list item styles ── */
+
 ListItem {
     background: $background;
     padding: 1 1 0 1;
     border-bottom: solid $surface;
+    height: auto;
 }
 
 ListItem.-highlight {
     background: $surface;
 }
 
-/* ── Settings tab ── */
-
-#settings-scroll {
-    height: 1fr;
+ListItem:disabled {
     background: $background;
-    padding: 1 2;
-}
-
-.section-header {
-    height: 1;
-    margin: 1 0 0 0;
-    color: $primary;
-}
-
-.setting-row {
-    layout: horizontal;
-    height: 3;
-    padding: 0 2;
-}
-
-.setting-label {
-    width: 1fr;
-    height: 1;
-    content-align: left middle;
-    padding: 1 0;
-}
-
-.setting-switch {
-    width: auto;
-    margin: 0 1;
-}
-
-.setting-input {
-    width: 12;
-    height: 1;
-    border: none;
-    margin: 0 1;
-}
-
-.settings-footer {
-    height: 1;
-    margin: 2 0 0 0;
+    opacity: 1.0;
 }
 
 /* ── Hint bar ── */

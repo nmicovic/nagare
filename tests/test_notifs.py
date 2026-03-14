@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from textual.widgets import ListView
 from nagare.notifs import NotifsApp
 from nagare.notifications.store import NotificationStore
 
@@ -17,8 +18,8 @@ async def test_notifs_shows_list(tmp_path):
     app = NotifsApp(store=store)
     async with app.run_test() as pilot:
         await pilot.pause()
-        items = app.query("ListItem")
-        assert len(items) == 2
+        lv = app.query_one("#notif-list", ListView)
+        assert len(lv.children) == 2
 
 
 @patch("nagare.notifs.STORE_PATH", None)
