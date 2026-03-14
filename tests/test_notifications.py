@@ -1,30 +1,91 @@
-from unittest.mock import patch
-from nagare.notifications.base import NotificationBackend
-from nagare.notifications.tmux import TmuxNotificationBackend
+from unittest.mock import patch, MagicMock
+
+from nagare.notifications.deliver import (
+    send_toast,
+    send_bell,
+    send_os_notify,
+    detect_os_notify_cmd,
+    send_popup,
+)
 
 
-def test_backend_is_abstract():
-    """NotificationBackend cannot be instantiated directly."""
-    import pytest
-    with pytest.raises(TypeError):
-        NotificationBackend()
+@patch("nagare.notifications.deliver.run_tmux")
+def test_send_toast(mock_run):
+    send_toast("session ready", duration=5000)
+    mock_run.assert_called_once_with("display-message", "-d", "5000", "session ready")
 
 
-@patch("nagare.notifications.tmux.run_tmux")
-def test_tmux_backend_notify(mock_run):
-    backend = TmuxNotificationBackend(duration=2000)
-    backend.notify("cosmo-ai is waiting for input", "cosmo-ai", "high")
+@patch("nagare.notifications.deliver.subprocess.run")
+def test_send_bell(mock_run):
+    send_bell()
+    mock_run.assert_called_once()
+    args = mock_run.call_args
+    assert args[0][0][0] == "tmux"
+    assert "run-shell" in args[0][0]
+
+
+@patch("nagare.notifications.deliver.detect_os_notify_cmd", return_value=["notify-send"])
+@patch("nagare.notifications.deliver.subprocess.run")
+def test_send_os_notify_linux(mock_run, mock_detect):
+    send_os_notify("Nagare", "Session ready")
     mock_run.assert_called_once_with(
-        "display-message", "-d", "2000",
-        "\u26a1 cosmo-ai is waiting for input",
+        ["notify-send", "Nagare", "Session ready"],
+        capture_output=True,
+        text=True,
     )
 
 
-@patch("nagare.notifications.tmux.run_tmux")
-def test_tmux_backend_custom_duration(mock_run):
-    backend = TmuxNotificationBackend(duration=5000)
-    backend.notify("test message", "proj-a", "low")
-    mock_run.assert_called_once_with(
-        "display-message", "-d", "5000",
-        "\u26a1 test message",
-    )
+@patch("nagare.notifications.deliver.detect_os_notify_cmd", return_value=None)
+@patch("nagare.notifications.deliver.subprocess.run")
+def test_send_os_notify_unavailable(mock_run, mock_detect):
+    send_os_notify("Nagare", "Session ready")
+    mock_run.assert_not_called()
+
+
+@patch.dict("os.environ", {"WSL_DISTRO_NAME": "Ubuntu"})
+@patch("shutil.which", return_value="/usr/bin/wsl-notify-send")
+def test_detect_wsl(mock_which):
+    result = detect_os_notify_cmd()
+    assert result == ["wsl-notify-send"]
+    mock_which.assert_called_with("wsl-notify-send")
+
+
+@patch.dict("os.environ", {}, clear=True)
+@patch("shutil.which", return_value="/usr/bin/notify-send")
+def test_detect_native_linux(mock_which):
+    # Ensure WSL_DISTRO_NAME is not set
+    import os
+    os.environ.pop("WSL_DISTRO_NAME", None)
+    result = detect_os_notify_cmd()
+    assert result == ["notify-send"]
+
+
+@patch.dict("os.environ", {}, clear=True)
+@patch("shutil.which", return_value=None)
+def test_detect_nothing_available(mock_which):
+    import os
+    os.environ.pop("WSL_DISTRO_NAME", None)
+    result = detect_os_notify_cmd()
+    assert result is None
+
+
+@patch("nagare.notifications.deliver.run_tmux")
+@patch("shutil.which", return_value="/usr/local/bin/nagare")
+def test_send_popup(mock_which, mock_run):
+    send_popup("my-project", "waiting_for_input", "Needs attention", working_seconds=120, popup_timeout=15)
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0]
+    assert args[0] == "display-popup"
+    assert "-w60%" in args
+    assert "-h30%" in args
+    assert "-E" in args
+    # The command should contain nagare popup-notif with the right flags
+    cmd_str = " ".join(args)
+    assert "popup-notif" in cmd_str
+    assert "--session" in cmd_str
+    assert "my-project" in cmd_str
+    assert "--event" in cmd_str
+    assert "waiting_for_input" in cmd_str
+    assert "--message" in cmd_str
+    assert "--timeout" in cmd_str
+    assert "--duration" in cmd_str
