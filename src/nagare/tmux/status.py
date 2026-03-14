@@ -2,35 +2,48 @@ import re
 
 from nagare.models import SessionDetails, SessionStatus
 
-# Patterns that indicate Claude Code is waiting for user input
-_WAITING_PATTERNS = [
+# The bare ❯ prompt on its own line means Claude is waiting for user input
+_WAITING_PROMPT_RE = re.compile(r"^❯\s*$", re.MULTILINE)
+
+# Patterns that indicate Claude Code is presenting a choice/confirmation
+_WAITING_CHOICE_PATTERNS = [
     re.compile(r"❯\s+\d+\.\s+(Yes|No)"),       # Choice prompts: ❯ 1. Yes
     re.compile(r"Do you want to"),               # Confirmation prompts
     re.compile(r"Esc to cancel"),                # Bottom of a prompt menu
 ]
 
-# Patterns that indicate Claude Code is actively running a command
+# Patterns that indicate Claude Code is actively working
 _RUNNING_PATTERNS = [
     re.compile(r"\(running\)"),                  # Status bar shows (running)
-    re.compile(r"⏵⏵"),                           # Progress indicator
+    re.compile(r"⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏|⠐|⠂"),  # Braille spinners
 ]
 
 
 def detect_status(pane_content: str) -> SessionStatus:
     """Detect Claude Code session status by parsing pane content."""
-    if not pane_content:
+    if not pane_content or not pane_content.strip():
         return SessionStatus.DEAD
 
     # Check last ~15 lines for patterns (most signals are near the bottom)
     tail = "\n".join(pane_content.splitlines()[-15:])
 
-    for pattern in _WAITING_PATTERNS:
+    # Check for choice/confirmation prompts first (these are WAITING_INPUT)
+    for pattern in _WAITING_CHOICE_PATTERNS:
         if pattern.search(tail):
             return SessionStatus.WAITING_INPUT
 
+    # Check if Claude is actively working
     for pattern in _RUNNING_PATTERNS:
         if pattern.search(tail):
             return SessionStatus.RUNNING
+
+    # A bare ❯ prompt means Claude finished — session is idle
+    if _WAITING_PROMPT_RE.search(tail):
+        return SessionStatus.IDLE
+
+    # If we see the status bar but no prompt, Claude is actively working
+    if "⏵⏵" in tail:
+        return SessionStatus.RUNNING
 
     return SessionStatus.IDLE
 

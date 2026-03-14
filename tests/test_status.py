@@ -23,33 +23,54 @@ def test_detect_waiting_file_create():
     assert detect_status(content) == SessionStatus.WAITING_INPUT
 
 
-def test_detect_running():
+def test_detect_idle_bare_prompt():
+    """Bare ❯ prompt means Claude finished — session is idle."""
+    content = """\
+● Done — all tests pass.
+
+────────────────────────────
+❯
+────────────────────────────
+  nemke@Cosmo:/home/nemke/Projects/foo (git:main) | Opus 4.6 | ctx:50%
+  ⏵⏵ accept edits on (shift+tab to cycle)"""
+    assert detect_status(content) == SessionStatus.IDLE
+
+
+def test_detect_running_command():
     content = """\
   nemke@Cosmo:/home/nemke/Projects/mugen (git:main) | Opus 4.6 | ctx:50%
   ⏵⏵ accept edits on · curl -s -X DELETE -H "Authorization: Be… (running)"""
     assert detect_status(content) == SessionStatus.RUNNING
 
 
-def test_detect_running_status_bar():
+def test_detect_running_spinner():
     content = """\
 some output here
-more output
-  doing something (running)"""
+⠐ thinking about the problem"""
     assert detect_status(content) == SessionStatus.RUNNING
 
 
-def test_detect_idle():
+def test_detect_running_no_prompt():
+    """If ⏵⏵ is present but no bare ❯ prompt, Claude is working."""
     content = """\
-     ◻ Task 8: End-to-end verification
+● Reading file src/main.py
 
-❯
-
-  nemke@Cosmo:/home/nemke/Projects/mugen (git:main) | Opus 4.6 | ctx:50%"""
-    assert detect_status(content) == SessionStatus.IDLE
+  nemke@Cosmo:/home/nemke/Projects/foo (git:main) | Opus 4.6 | ctx:50%
+  ⏵⏵ accept edits on · 3 bashes"""
+    assert detect_status(content) == SessionStatus.RUNNING
 
 
 def test_detect_dead_empty():
     assert detect_status("") == SessionStatus.DEAD
+    assert detect_status("   \n  \n  ") == SessionStatus.DEAD
+
+
+def test_detect_idle_no_claude():
+    """No Claude indicators at all — regular terminal."""
+    content = """\
+nemke@Cosmo:~$ ls
+Documents  Downloads  Projects"""
+    assert detect_status(content) == SessionStatus.IDLE
 
 
 def test_parse_details_full_status_bar():
