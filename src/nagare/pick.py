@@ -633,11 +633,20 @@ class PickerApp(App):
         if self._filtered_sessions:
             for session in self._filtered_sessions:
                 lv.append(_make_item(session, self._topics))
-            # Always ensure something is selected
-            if lv.index is None or lv.index >= len(self._filtered_sessions):
-                lv.index = 0
+            # Defer index setting so the DOM has the new items first
+            self.call_after_refresh(self._ensure_list_selection, 0)
         else:
             lv.append(ListItem(Static("[dim]No matching sessions[/dim]")))
+
+    def _ensure_list_selection(self, index: int) -> None:
+        """Force highlight on a list item after the DOM has refreshed."""
+        lv = self.query_one("#session-list", ListView)
+        if not self._filtered_sessions:
+            return
+        index = min(index, len(self._filtered_sessions) - 1)
+        # Reset to None first to force the watcher to fire
+        lv.index = None
+        lv.index = index
 
         session = self._get_highlighted_session()
         if session is not None:
