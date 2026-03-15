@@ -384,18 +384,31 @@ class PickerApp(App):
         new_snapshot = {s.name: s.status for s in self._sessions}
         if old_snapshot != new_snapshot:
             self._apply_filter()
+            # Restore selection by name, fall back to 0
+            restored = False
             if highlighted_name:
-                if self._view_mode == "list":
-                    lv = self.query_one("#session-list", ListView)
-                    for i, s in enumerate(self._filtered_sessions):
-                        if s.name == highlighted_name:
-                            lv.index = i
-                            break
-                else:
-                    for i, s in enumerate(self._filtered_sessions):
-                        if s.name == highlighted_name:
+                for i, s in enumerate(self._filtered_sessions):
+                    if s.name == highlighted_name:
+                        if self._view_mode == "list":
+                            self.query_one("#session-list", ListView).index = i
+                        else:
                             self._grid_selected = i
-                            break
+                            self._update_grid_selection()
+                        restored = True
+                        break
+            if not restored and self._filtered_sessions:
+                if self._view_mode == "list":
+                    self.query_one("#session-list", ListView).index = 0
+                else:
+                    self._grid_selected = 0
+                    self._update_grid_selection()
+
+        # Ensure list view always has a valid selection
+        if self._view_mode == "list" and self._filtered_sessions:
+            lv = self.query_one("#session-list", ListView)
+            if lv.index is None:
+                lv.index = 0
+
         if self._view_mode == "list":
             self._update_dashboard()
 
@@ -588,16 +601,24 @@ class PickerApp(App):
                 self._grid_timer.stop()
             self._list_timer = self.set_interval(1, self._poll_preview)
 
-        # Restore selection by name
+        # Restore selection by name, fall back to 0
+        restored = False
         if highlighted_name:
             for i, s in enumerate(self._filtered_sessions):
                 if s.name == highlighted_name:
                     if self._view_mode == "list":
-                        lv = self.query_one("#session-list", ListView)
-                        lv.index = i
+                        self.query_one("#session-list", ListView).index = i
                     else:
                         self._grid_selected = i
+                        self._update_grid_selection()
+                    restored = True
                     break
+        if not restored and self._filtered_sessions:
+            if self._view_mode == "list":
+                self.query_one("#session-list", ListView).index = 0
+            else:
+                self._grid_selected = 0
+                self._update_grid_selection()
 
         self._update_hint_bar()
 
@@ -609,12 +630,15 @@ class PickerApp(App):
     def _rebuild_list(self) -> None:
         lv = self.query_one("#session-list", ListView)
         lv.clear()
-        for session in self._filtered_sessions:
-            lv.append(_make_item(session, self._topics))
         if self._filtered_sessions:
-            lv.index = 0
-        if not self._filtered_sessions:
+            for session in self._filtered_sessions:
+                lv.append(_make_item(session, self._topics))
+            # Always ensure something is selected
+            if lv.index is None or lv.index >= len(self._filtered_sessions):
+                lv.index = 0
+        else:
             lv.append(ListItem(Static("[dim]No matching sessions[/dim]")))
+
         session = self._get_highlighted_session()
         if session is not None:
             self._update_preview(session)
