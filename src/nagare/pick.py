@@ -74,11 +74,28 @@ _STATUS_LABEL = {
 }
 
 
-def _format_line1(session: Session) -> str:
+def _get_all_session_ages() -> dict[str, str]:
+    """Batch-fetch session ages from tmux in a single call."""
+    try:
+        raw = run_tmux("list-sessions", "-F", "#{session_name}:#{session_created}")
+        now = time.time()
+        ages = {}
+        for line in raw.splitlines():
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                ages[parts[0]] = _human_duration(int(now - int(parts[1])))
+        return ages
+    except Exception:
+        return {}
+
+
+def _format_line1(session: Session, ages: dict[str, str] | None = None) -> str:
     icon = session.status_icon
     agent = session.agent_icon
     label = _STATUS_LABEL.get(session.status, "")
-    return f"{icon}  {agent} [b]{session.name}[/b]  {label}"
+    age = (ages or {}).get(session.name, "")
+    age_str = f"  [dim]⏱ {age}[/dim]" if age else ""
+    return f"{icon}  {agent} [b]{session.name}[/b]  {label}{age_str}"
 
 
 def _format_line2(session: Session) -> str:
@@ -107,9 +124,9 @@ def _format_topic(session: Session, topics: dict[str, str]) -> str:
     return f"    [dim italic]💬 {topic}[/dim italic]"
 
 
-def _make_item(session: Session, topics: dict[str, str]) -> ListItem:
+def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | None = None) -> ListItem:
     children = [
-        Static(_format_line1(session)),
+        Static(_format_line1(session, ages)),
         Static(_format_line2(session)),
         Static(_format_line3(session)),
     ]
@@ -676,6 +693,16 @@ class PickerApp(App):
 
     # ── Events ──
 
+    def on_app_focus(self, event) -> None:
+        """Refresh all data immediately when the picker regains focus."""
+        self._refresh_sessions()
+        if self._view_mode == "grid":
+            self._update_grid_previews()
+        else:
+            session = self._get_highlighted_session()
+            if session is not None:
+                self._update_preview(session)
+
     def on_input_changed(self, event: Input.Changed) -> None:
         self._apply_filter()
 
@@ -683,8 +710,9 @@ class PickerApp(App):
         lv = self.query_one("#session-list", ListView)
         lv.clear()
         if self._filtered_sessions:
+            ages = _get_all_session_ages()
             for session in self._filtered_sessions:
-                lv.append(_make_item(session, self._topics))
+                lv.append(_make_item(session, self._topics, ages))
             # Defer index setting so the DOM has the new items first
             self.call_after_refresh(self._ensure_list_selection, 0)
         else:
