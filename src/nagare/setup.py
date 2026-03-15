@@ -6,6 +6,8 @@ from nagare.config import NagareConfig, load_config, CONFIG_PATH
 
 DATA_DIR = Path.home() / ".local" / "share" / "nagare"
 CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+OPENCODE_PLUGIN_DIR = Path.home() / ".config" / "opencode" / "plugin"
+OPENCODE_PLUGIN_SRC = Path(__file__).resolve().parent / "opencode_plugin.ts"
 
 _DEFAULT_CONFIG = """\
 # nagare configuration
@@ -160,6 +162,18 @@ def _install_hooks() -> bool:
     return True
 
 
+def _install_opencode_plugin() -> bool:
+    """Copy the nagare plugin into OpenCode's plugin directory."""
+    if not OPENCODE_PLUGIN_SRC.exists():
+        print(f"OpenCode plugin source not found: {OPENCODE_PLUGIN_SRC}")
+        return False
+
+    OPENCODE_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
+    dest = OPENCODE_PLUGIN_DIR / "nagare.ts"
+    shutil.copy2(OPENCODE_PLUGIN_SRC, dest)
+    return True
+
+
 def run_setup() -> None:
     config_path = Path(CONFIG_PATH)
     if not config_path.exists():
@@ -178,6 +192,13 @@ def run_setup() -> None:
         print("Hooks installed in ~/.claude/settings.json")
     else:
         print("Could not install hooks automatically.")
+
+    # Install OpenCode plugin
+    print("\nInstalling OpenCode plugin...")
+    if _install_opencode_plugin():
+        print(f"Plugin installed: {OPENCODE_PLUGIN_DIR / 'nagare.ts'}")
+    else:
+        print("Could not install OpenCode plugin.")
 
     # Install tmux popup hook for notification overlays
     print("\nInstalling tmux popup hook...")
