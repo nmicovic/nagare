@@ -258,6 +258,7 @@ class PickerApp(App):
         self._preview_session: Session | None = None
         self._view_mode = "list"  # "list" or "grid"
         self._grid_selected = 0  # Index in _filtered_sessions for grid
+        self._grid_generation = 0  # Increments each rebuild to avoid duplicate IDs
         self._grid_refresh_interval = 0.5
         self._grid_timer: Timer | None = None
         self._list_timer: Timer | None = None
@@ -416,7 +417,14 @@ class PickerApp(App):
     def _rebuild_grid(self) -> None:
         """Rebuild the grid with session cells."""
         container = self.query_one("#grid-view")
-        container.remove_children()
+
+        # Use a unique generation ID to avoid DuplicateIds errors.
+        # Textual's remove() is async so old widgets may linger briefly.
+        self._grid_generation += 1
+        gen = self._grid_generation
+
+        for child in list(container.children):
+            child.remove()
 
         if not self._filtered_sessions:
             container.mount(Static("[dim]No matching sessions[/dim]"))
@@ -425,13 +433,13 @@ class PickerApp(App):
         cols = _grid_columns(len(self._filtered_sessions))
         cells = []
         for i, session in enumerate(self._filtered_sessions):
-            cells.append(self._make_grid_cell(session, i))
+            cells.append(self._make_grid_cell(session, i, gen))
 
-        grid = Grid(*cells, id="session-grid", classes=f"grid-cols-{cols}")
+        grid = Grid(*cells, id=f"session-grid-{gen}", classes=f"grid-cols-{cols}")
         container.mount(grid)
         self._update_grid_selection()
 
-    def _make_grid_cell(self, session: Session, index: int) -> Vertical:
+    def _make_grid_cell(self, session: Session, index: int, gen: int = 0) -> Vertical:
         """Create a single grid cell widget for a session."""
         icon = session.status_icon
         label = _STATUS_LABEL.get(session.status, "")
@@ -449,22 +457,23 @@ class PickerApp(App):
         topic_w = Static(f"[dim]💬 {topic}[/dim]" if topic else "", classes="cell-topic")
 
         preview = VerticalScroll(
-            Static("", id=f"cell-preview-{index}"),
+            Static("", id=f"cell-preview-{gen}-{index}"),
             classes="cell-preview",
         )
 
         cell = Vertical(
             header, meta, topic_w, preview,
-            id=f"cell-{index}",
+            id=f"cell-{gen}-{index}",
             classes="grid-cell",
         )
         return cell
 
     def _update_grid_previews(self) -> None:
         """Update all grid cell pane captures."""
+        gen = self._grid_generation
         for i, session in enumerate(self._filtered_sessions):
             try:
-                preview_widget = self.query_one(f"#cell-preview-{i}", Static)
+                preview_widget = self.query_one(f"#cell-preview-{gen}-{i}", Static)
             except Exception:
                 continue
 
@@ -473,9 +482,8 @@ class PickerApp(App):
             while lines and not lines[0].strip():
                 lines.pop(0)
 
-            # Truncate to cell width
             try:
-                cell = self.query_one(f"#cell-{i}")
+                cell = self.query_one(f"#cell-{gen}-{i}")
                 max_width = cell.size.width - 4
                 if max_width > 0:
                     lines = [line[:max_width] for line in lines]
@@ -485,7 +493,6 @@ class PickerApp(App):
             rich_text = Text.from_ansi("\n".join(lines))
             preview_widget.update(rich_text)
 
-            # Scroll to bottom
             try:
                 scroll = preview_widget.parent
                 if hasattr(scroll, "scroll_end"):
@@ -497,9 +504,10 @@ class PickerApp(App):
 
     def _update_grid_selection(self) -> None:
         """Highlight the selected grid cell with a bright border."""
+        gen = self._grid_generation
         for i, session in enumerate(self._filtered_sessions):
             try:
-                cell = self.query_one(f"#cell-{i}")
+                cell = self.query_one(f"#cell-{gen}-{i}")
             except Exception:
                 continue
 
