@@ -50,6 +50,8 @@ _HELP_TEXT = """\
   [b]←/→[/b]          Move left/right (grid only)
   [b]Enter[/b]        Jump to selected session
   [b]Ctrl+y[/b]       Quick approve (NEEDS INPUT sessions only)
+  [b]Ctrl+w[/b]       Kill agent pane
+  [b]Ctrl+x[/b]       Kill entire tmux session
   [b]Esc[/b]          Close picker
 
 [b]Views[/b]
@@ -877,6 +879,14 @@ class PickerApp(App):
             self._quick_approve()
             event.prevent_default()
             event.stop()
+        elif event.key == "ctrl+w":
+            self._kill_agent_pane()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "ctrl+x":
+            self._kill_tmux_session()
+            event.prevent_default()
+            event.stop()
         elif event.key == "ctrl+s":
             self._cycle_sort()
             event.prevent_default()
@@ -950,7 +960,7 @@ class PickerApp(App):
         event.stop()
 
     def _quick_approve(self) -> None:
-        """Send 'y' + Enter to the selected session if it needs input."""
+        """Send Enter to the selected session if it needs input."""
         session = self._get_highlighted_session()
         if session is None:
             return
@@ -962,6 +972,54 @@ class PickerApp(App):
             logger.info("quick approve sent to %s", session.name)
         except Exception:
             logger.exception("quick approve failed for %s", session.name)
+
+    def _kill_agent_pane(self) -> None:
+        """Kill just the agent pane, leave the tmux session alive."""
+        session = self._get_highlighted_session()
+        if session is None:
+            return
+        target = f"{session.name}:{session.window_index}.{session.pane_index}"
+        try:
+            # Mark state as dead immediately
+            from nagare.state import STATES_DIR
+            import json
+            for f in STATES_DIR.glob("*.json"):
+                try:
+                    data = json.loads(f.read_text())
+                    if data.get("cwd") == session.path:
+                        data["state"] = "dead"
+                        f.write_text(json.dumps(data))
+                except Exception:
+                    pass
+            run_tmux("kill-pane", "-t", target)
+            logger.info("killed agent pane %s", target)
+        except Exception:
+            logger.exception("kill pane failed for %s", target)
+        self._refresh_sessions()
+
+    def _kill_tmux_session(self) -> None:
+        """Kill the entire tmux session."""
+        session = self._get_highlighted_session()
+        if session is None:
+            return
+        name = session.name
+        try:
+            # Mark all state files for this session's path as dead
+            from nagare.state import STATES_DIR
+            import json
+            for f in STATES_DIR.glob("*.json"):
+                try:
+                    data = json.loads(f.read_text())
+                    if data.get("cwd") == session.path:
+                        data["state"] = "dead"
+                        f.write_text(json.dumps(data))
+                except Exception:
+                    pass
+            run_tmux("kill-session", "-t", name)
+            logger.info("killed tmux session %s", name)
+        except Exception:
+            logger.exception("kill session failed for %s", name)
+        self._refresh_sessions()
 
     def _cycle_sort(self) -> None:
         """Cycle through sort modes: status → name → agent."""
