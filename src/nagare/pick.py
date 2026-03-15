@@ -49,6 +49,7 @@ _HELP_TEXT = """\
   [b]↑/↓[/b]          Move up/down (list & grid)
   [b]←/→[/b]          Move left/right (grid only)
   [b]Enter[/b]        Jump to selected session
+  [b]Ctrl+y[/b]       Quick approve (NEEDS INPUT sessions only)
   [b]Esc[/b]          Close picker
 
 [b]Views[/b]
@@ -872,6 +873,10 @@ class PickerApp(App):
             self._toggle_view()
             event.prevent_default()
             event.stop()
+        elif event.key == "ctrl+y":
+            self._quick_approve()
+            event.prevent_default()
+            event.stop()
         elif event.key == "ctrl+s":
             self._cycle_sort()
             event.prevent_default()
@@ -943,6 +948,20 @@ class PickerApp(App):
             self._update_grid_selection()
         event.prevent_default()
         event.stop()
+
+    def _quick_approve(self) -> None:
+        """Send 'y' + Enter to the selected session if it needs input."""
+        session = self._get_highlighted_session()
+        if session is None:
+            return
+        if session.status != SessionStatus.WAITING_INPUT:
+            return
+        target = f"{session.name}:{session.window_index}.{session.pane_index}"
+        try:
+            run_tmux("send-keys", "-t", target, "y", "Enter")
+            logger.info("quick approve sent to %s", session.name)
+        except Exception:
+            logger.exception("quick approve failed for %s", session.name)
 
     def _cycle_sort(self) -> None:
         """Cycle through sort modes: status → name → agent."""
@@ -1018,7 +1037,7 @@ class PickerApp(App):
         else:
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
-            f"[b]Tab[/b] View  [b]Enter[/b] Jump  {nav}"
+            f"[b]Tab[/b] View  [b]Enter[/b] Jump  [b]Ctrl+y[/b] Approve  {nav}"
             f"  [b]Ctrl+s[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
             f"  [b]F1[/b] Help  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
