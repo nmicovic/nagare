@@ -36,13 +36,6 @@ _STATUS_LABEL = {
     SessionStatus.DEAD: "[dim]EXITED[/dim]",
 }
 
-_STATUS_BORDER_COLOR = {
-    SessionStatus.WAITING_INPUT: "#db4b4b",
-    SessionStatus.RUNNING: "#e0af68",
-    SessionStatus.IDLE: "#00D26A",
-    SessionStatus.DEAD: "#565f89",
-}
-
 
 def _format_line1(session: Session) -> str:
     icon = session.status_icon
@@ -510,17 +503,16 @@ class PickerApp(App):
     def _update_grid_selection(self) -> None:
         """Highlight the selected grid cell with a bright border."""
         gen = self._grid_generation
-        for i, session in enumerate(self._filtered_sessions):
+        for i in range(len(self._filtered_sessions)):
             try:
                 cell = self.query_one(f"#cell-{gen}-{i}")
             except Exception:
                 continue
 
-            color = _STATUS_BORDER_COLOR.get(session.status, "#565f89")
             if i == self._grid_selected:
-                cell.styles.border = ("double", color)
+                cell.styles.border = ("thick", "#7aa2f7")  # tokyonight primary
             else:
-                cell.styles.border = ("solid", color)
+                cell.styles.border = ("solid", "#414868")  # tokyonight panel/muted
 
     # ── View toggle ──
 
