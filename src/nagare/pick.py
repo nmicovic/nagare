@@ -958,7 +958,7 @@ class PickerApp(App):
             return
         target = f"{session.name}:{session.window_index}.{session.pane_index}"
         try:
-            run_tmux("send-keys", "-t", target, "y", "Enter")
+            run_tmux("send-keys", "-t", target, "Enter")
             logger.info("quick approve sent to %s", session.name)
         except Exception:
             logger.exception("quick approve failed for %s", session.name)
