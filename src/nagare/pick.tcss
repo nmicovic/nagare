@@ -80,7 +80,12 @@ ListItem {
 }
 
 ListItem.-highlight {
-    background: $surface;
+    background: $panel;
+    border-left: thick $primary;
+}
+
+#session-list:focus ListItem.-highlight {
+    background: $panel;
     border-left: thick $primary;
 }
 
