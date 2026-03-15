@@ -638,9 +638,9 @@ class PickerApp(App):
                 continue
 
             if i == self._grid_selected:
-                cell.styles.border = ("thick", "#7aa2f7")  # tokyonight primary
+                cell.styles.border = ("solid", "#7aa2f7")  # tokyonight primary
             else:
-                cell.styles.border = ("solid", "#414868")  # tokyonight panel/muted
+                cell.styles.border = ("solid", "#313552")  # subtle muted
 
     # ── View toggle ──
 
