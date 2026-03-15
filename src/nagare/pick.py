@@ -669,7 +669,36 @@ class PickerApp(App):
         self.query_one("#title-bar", Static).update("".join(parts))
 
     def _jump_to_session(self, session) -> None:
+        """Flash the selected widget then jump to the tmux session."""
         target = f"{session.name}:{session.window_index}.{session.pane_index}"
+
+        # Find the widget to flash
+        widget = None
+        if self._view_mode == "list":
+            lv = self.query_one("#session-list", ListView)
+            if lv.index is not None and 0 <= lv.index < len(lv.children):
+                widget = lv.children[lv.index]
+        else:
+            gen = self._grid_generation
+            try:
+                widget = self.query_one(f"#cell-{gen}-{self._grid_selected}")
+            except Exception:
+                pass
+
+        if widget:
+            # Flash: dim → bright → jump
+            widget.styles.animate(
+                "opacity", value=0.3, duration=0.12,
+                on_complete=lambda: widget.styles.animate(
+                    "opacity", value=1.0, duration=0.12,
+                    on_complete=lambda: self._do_jump(target),
+                ),
+            )
+        else:
+            self._do_jump(target)
+
+    def _do_jump(self, target: str) -> None:
+        """Actually switch to the tmux session and exit."""
         run_tmux("switch-client", "-t", target)
         self.exit()
 
