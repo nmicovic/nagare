@@ -88,6 +88,17 @@ Picker poll (1s) → tmux capture-pane → preview panel update
 
 - Do NOT include "Co-Authored-By" lines or any mention of Claude/AI in commit messages.
 
+## Logging & Debugging
+
+All nagare modules log to `~/.local/share/nagare/nagare.log` (1MB rotating, 3 backups). Use `from nagare.log import logger` in any module.
+
+When debugging issues — **always read the log first**:
+```bash
+tail -50 ~/.local/share/nagare/nagare.log
+```
+
+The log captures: hook events, notification delivery, state changes, view toggles, and exceptions with full tracebacks. This is especially important for hooks, which run as subprocesses where stderr is invisible.
+
 ## Development
 
 ```bash

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from nagare.config import load_config, NagareConfig
+from nagare.log import logger
 from nagare.notifications.deliver import send_toast, send_bell, send_os_notify, send_popup
 from nagare.notifications.store import NotificationStore
 
@@ -66,7 +67,9 @@ def _deliver(
     store_path: Path,
 ) -> None:
     """Dispatch notification to enabled delivery channels."""
+    logger.info("deliver session=%s event=%s msg=%s", session_name, event_type, message[:80])
     if not config.notifications.enabled:
+        logger.debug("notifications disabled globally")
         return
 
     # Per-session overrides
@@ -123,6 +126,7 @@ def handle_hook() -> None:
     event = data.get("hook_event_name", "")
     session_id = data.get("session_id", "")
     cwd = data.get("cwd", "")
+    logger.debug("hook event=%s session=%s cwd=%s", event, session_id[:8], cwd)
 
     if not session_id:
         return
@@ -176,7 +180,7 @@ def handle_hook() -> None:
     try:
         _maybe_notify(state, prev_state_data, now, notification_type, cwd, session_id)
     except Exception:
-        pass
+        logger.exception("_maybe_notify failed")
 
 
 def _maybe_notify(

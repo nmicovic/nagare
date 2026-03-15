@@ -15,6 +15,7 @@ from textual.timer import Timer
 from textual.widgets import Input, ListView, ListItem, Static
 
 from nagare.config import load_config, save_theme
+from nagare.log import logger
 from nagare.history import load_conversation_topics
 from nagare.models import Session, SessionStatus
 from nagare.themes import THEMES
@@ -514,6 +515,9 @@ class PickerApp(App):
         """Switch between list and grid view."""
         highlighted = self._get_highlighted_session()
         highlighted_name = highlighted.name if highlighted else None
+        logger.info("toggle view: %s -> %s (%d sessions)",
+                    self._view_mode, "grid" if self._view_mode == "list" else "list",
+                    len(self._filtered_sessions))
 
         if self._view_mode == "list":
             self._view_mode = "grid"

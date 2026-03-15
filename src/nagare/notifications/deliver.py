@@ -11,6 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from nagare.log import logger
 from nagare.tmux import run_tmux
 
 
@@ -105,11 +106,15 @@ def send_popup(
     try:
         nagare_bin = _find_nagare_bin()
         if nagare_bin is None:
+            logger.warning("send_popup: nagare binary not found")
             return
 
         client = _get_client_name()
         if client is None:
+            logger.warning("send_popup: no tmux client found")
             return
+
+        logger.info("send_popup: session=%s event=%s client=%s", session_name, event_type, client)
 
         safe_msg = message.replace('"', '\\"').replace("'", "")
         safe_name = session_name.replace('"', "").replace("'", "")
