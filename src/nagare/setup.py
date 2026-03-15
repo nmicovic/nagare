@@ -59,6 +59,18 @@ min_working_seconds = 30
 # popup = true
 # os_notify = true
 
+# ── Animation ──────────────────────────────────────────────────
+[animation]
+# Animation when jumping to a session from the picker
+# Options: flash, pulse, fade, sweep, shrink, none
+jump_animation = "flash"
+# Duration in seconds for each animation type (tweak to taste)
+flash_duration = 0.2
+pulse_duration = 0.4
+fade_duration = 0.25
+sweep_duration = 0.2
+shrink_duration = 0.3
+
 # ── Appearance ─────────────────────────────────────────────────
 [appearance]
 # Theme name — cycle with Ctrl+t in the picker

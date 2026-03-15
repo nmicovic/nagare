@@ -41,8 +41,29 @@ class NotificationConfig:
 
 
 @dataclass(frozen=True)
+class AnimationConfig:
+    jump_animation: str = "flash"  # flash, pulse, fade, sweep, shrink, none
+    flash_duration: float = 0.2
+    pulse_duration: float = 0.4
+    fade_duration: float = 0.25
+    sweep_duration: float = 0.2
+    shrink_duration: float = 0.3
+
+
+_ANIMATION_DEFAULTS = dict(
+    jump_animation="flash",
+    flash_duration=0.2,
+    pulse_duration=0.4,
+    fade_duration=0.25,
+    sweep_duration=0.2,
+    shrink_duration=0.3,
+)
+
+
+@dataclass(frozen=True)
 class NagareConfig:
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
+    animation: AnimationConfig = field(default_factory=AnimationConfig)
     notification_duration: int = 3000
     picker_width: str = "80%"
     picker_height: str = "80%"
@@ -89,8 +110,14 @@ def load_config() -> NagareConfig:
         sessions=sessions,
     )
 
+    # Parse animation config
+    anim_data = data.get("animation", {})
+    anim_merged = {**_ANIMATION_DEFAULTS, **anim_data}
+    animation_config = AnimationConfig(**anim_merged)
+
     return NagareConfig(
         notifications=notification_config,
+        animation=animation_config,
         notification_duration=notifs.get("duration", 3000),
         picker_width=picker.get("popup_width", "80%"),
         picker_height=picker.get("popup_height", "80%"),

@@ -14,7 +14,7 @@ from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.timer import Timer
 from textual.widgets import Input, ListView, ListItem, Static
 
-from nagare.config import load_config, save_theme
+from nagare.config import AnimationConfig, load_config, save_theme
 from nagare.log import logger
 from nagare.history import load_conversation_topics
 from nagare.models import Session, SessionStatus
@@ -277,6 +277,7 @@ class PickerApp(App):
         self._theme_names = list(THEMES.keys())
         self._theme_index = 0
         self._preview_session: Session | None = None
+        self._anim_config = AnimationConfig()
         self._view_mode = "list"  # "list" or "grid"
         self._grid_selected = 0  # Index in _filtered_sessions for grid
         self._grid_generation = 0  # Increments each rebuild to avoid duplicate IDs
@@ -302,6 +303,7 @@ class PickerApp(App):
 
     def on_mount(self) -> None:
         config = load_config()
+        self._anim_config = config.animation
         self._grid_refresh_interval = config.grid_refresh_interval
         for t in THEMES.values():
             self.register_theme(t)
@@ -669,33 +671,97 @@ class PickerApp(App):
         self.query_one("#title-bar", Static).update("".join(parts))
 
     def _jump_to_session(self, session) -> None:
-        """Flash the selected widget then jump to the tmux session."""
+        """Animate the selected widget then jump to the tmux session."""
         target = f"{session.name}:{session.window_index}.{session.pane_index}"
 
-        # Find the widget to flash
-        widget = None
+        widget = self._get_selected_widget()
+        anim = self._anim_config
+
+        if not widget or anim.jump_animation == "none":
+            self._do_jump(target)
+            return
+
+        name = anim.jump_animation
+        if name == "flash":
+            self._anim_flash(widget, target, anim.flash_duration)
+        elif name == "pulse":
+            self._anim_pulse(widget, target, anim.pulse_duration)
+        elif name == "fade":
+            self._anim_fade(widget, target, anim.fade_duration)
+        elif name == "sweep":
+            self._anim_sweep(widget, target, anim.sweep_duration)
+        elif name == "shrink":
+            self._anim_shrink(widget, target, anim.shrink_duration)
+        else:
+            self._do_jump(target)
+
+    def _get_selected_widget(self):
+        """Get the currently selected widget (list item or grid cell)."""
         if self._view_mode == "list":
             lv = self.query_one("#session-list", ListView)
             if lv.index is not None and 0 <= lv.index < len(lv.children):
-                widget = lv.children[lv.index]
+                return lv.children[lv.index]
         else:
             gen = self._grid_generation
             try:
-                widget = self.query_one(f"#cell-{gen}-{self._grid_selected}")
+                return self.query_one(f"#cell-{gen}-{self._grid_selected}")
             except Exception:
                 pass
+        return None
 
-        if widget:
-            # Flash: dim → bright → jump
-            widget.styles.animate(
-                "opacity", value=0.3, duration=0.12,
+    def _anim_flash(self, widget, target: str, duration: float) -> None:
+        """Dim → bright → jump."""
+        half = duration / 2
+        widget.styles.animate(
+            "opacity", value=0.3, duration=half,
+            on_complete=lambda: widget.styles.animate(
+                "opacity", value=1.0, duration=half,
+                on_complete=lambda: self._do_jump(target),
+            ),
+        )
+
+    def _anim_pulse(self, widget, target: str, duration: float) -> None:
+        """Dim → bright → dim → bright → jump (two beats)."""
+        quarter = duration / 4
+        widget.styles.animate(
+            "opacity", value=0.3, duration=quarter,
+            on_complete=lambda: widget.styles.animate(
+                "opacity", value=1.0, duration=quarter,
                 on_complete=lambda: widget.styles.animate(
-                    "opacity", value=1.0, duration=0.12,
-                    on_complete=lambda: self._do_jump(target),
+                    "opacity", value=0.3, duration=quarter,
+                    on_complete=lambda: widget.styles.animate(
+                        "opacity", value=1.0, duration=quarter,
+                        on_complete=lambda: self._do_jump(target),
+                    ),
                 ),
-            )
-        else:
-            self._do_jump(target)
+            ),
+        )
+
+    def _anim_fade(self, widget, target: str, duration: float) -> None:
+        """Fade to transparent → jump."""
+        widget.styles.animate(
+            "opacity", value=0.0, duration=duration,
+            on_complete=lambda: self._do_jump(target),
+        )
+
+    def _anim_sweep(self, widget, target: str, duration: float) -> None:
+        """Background flash to primary color → jump."""
+        from textual.color import Color
+        widget.styles.animate(
+            "background", value=Color.parse("#7aa2f7"), duration=duration * 0.6,
+            on_complete=lambda: widget.styles.animate(
+                "opacity", value=0.0, duration=duration * 0.4,
+                on_complete=lambda: self._do_jump(target),
+            ),
+        )
+
+    def _anim_shrink(self, widget, target: str, duration: float) -> None:
+        """Collapse height → jump."""
+        widget.styles.animate(
+            "opacity", value=0.0, duration=duration,
+            on_complete=lambda: self._do_jump(target),
+        )
+        widget.styles.animate("height", value=1, duration=duration)
 
     def _do_jump(self, target: str) -> None:
         """Actually switch to the tmux session and exit."""
