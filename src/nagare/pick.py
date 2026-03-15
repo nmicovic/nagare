@@ -10,7 +10,8 @@ _BG_COLOR_RE = re.compile(r"\x1b\[(?:48;[25](?:;[\d]+)*|49)m")
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
+from textual.timer import Timer
 from textual.widgets import Input, ListView, ListItem, Static
 
 from nagare.config import load_config, save_theme
@@ -32,6 +33,13 @@ _STATUS_LABEL = {
     SessionStatus.RUNNING: "[bold yellow]WORKING[/bold yellow]",
     SessionStatus.IDLE: "[bold #00D26A]IDLE[/bold #00D26A]",
     SessionStatus.DEAD: "[dim]EXITED[/dim]",
+}
+
+_STATUS_BORDER_COLOR = {
+    SessionStatus.WAITING_INPUT: "#db4b4b",
+    SessionStatus.RUNNING: "#e0af68",
+    SessionStatus.IDLE: "#00D26A",
+    SessionStatus.DEAD: "#565f89",
 }
 
 
@@ -58,11 +66,9 @@ def _format_line3(session: Session) -> str:
 
 
 def _format_topic(session: Session, topics: dict[str, str]) -> str:
-    # Prefer last_message from hooks (Claude's last response) over history
     topic = session.last_message or topics.get(session.path, "")
     if not topic:
         return ""
-    # Take just the first line and truncate
     topic = topic.strip().split("\n")[0]
     if len(topic) > 80:
         topic = topic[:77] + "..."
@@ -87,14 +93,12 @@ def _capture_pane(session: Session) -> str:
     target = f"{session.name}:{session.window_index}.{session.pane_index}"
     try:
         raw = run_tmux("capture-pane", "-t", target, "-p", "-e")
-        # Strip background colors that clash with Textual's theme
         return _BG_COLOR_RE.sub("", raw)
     except Exception:
-        return "[dim]Unable to capture pane content[/dim]"
+        return ""
 
 
 def _human_duration(seconds: float) -> str:
-    """Convert seconds to a human-readable duration string."""
     seconds = int(seconds)
     if seconds < 60:
         return f"{seconds}s"
@@ -111,19 +115,14 @@ def _human_duration(seconds: float) -> str:
 
 
 def _get_session_details(session: Session) -> str:
-    """Get detailed info about a tmux session for the detail panel."""
     parts = []
     name = session.name
-
-    # Session age
     try:
         created = int(run_tmux("display-message", "-t", name, "-p", "#{session_created}"))
         age = _human_duration(time.time() - created)
         parts.append(f"  ⏱  Session age: [b]{age}[/b]")
     except (ValueError, Exception):
         pass
-
-    # Windows/tabs
     try:
         windows_raw = run_tmux(
             "list-windows", "-t", name,
@@ -140,8 +139,6 @@ def _get_session_details(session: Session) -> str:
             parts.extend(window_lines)
     except Exception:
         pass
-
-    # Processes in panes
     try:
         panes_raw = run_tmux(
             "list-panes", "-s", "-t", name,
@@ -156,8 +153,6 @@ def _get_session_details(session: Session) -> str:
             parts.extend(proc_lines)
     except Exception:
         pass
-
-    # Pane dimensions
     try:
         dims = run_tmux(
             "display-message", "-t",
@@ -168,20 +163,15 @@ def _get_session_details(session: Session) -> str:
             parts.append(f"  📐 Pane size: {dims}")
     except Exception:
         pass
-
     return "\n".join(parts) if parts else "[dim]No details available[/dim]"
 
 
 def _get_dashboard_stats(sessions: list[Session]) -> str:
-    """Build a dashboard stats string for the bottom of the left panel."""
     total = len(sessions)
     by_status = {}
     for s in sessions:
         by_status[s.status] = by_status.get(s.status, 0) + 1
-
     parts = []
-
-    # Status breakdown
     status_parts = []
     for status, icon in [
         (SessionStatus.WAITING_INPUT, "🔴"),
@@ -193,16 +183,12 @@ def _get_dashboard_stats(sessions: list[Session]) -> str:
         if count:
             status_parts.append(f"{icon} {count}")
     parts.append(f"  {total} sessions  " + "  ".join(status_parts))
-
-    # System load
     try:
         with open("/proc/loadavg") as f:
             load_1, load_5, load_15, *_ = f.read().split()
         parts.append(f"  📊 Load: {load_1} / {load_5} / {load_15}")
     except Exception:
         pass
-
-    # Memory
     try:
         with open("/proc/meminfo") as f:
             mem = {}
@@ -216,15 +202,12 @@ def _get_dashboard_stats(sessions: list[Session]) -> str:
                 parts.append(f"  🧠 Mem: {used_gb:.1f}G / {total_gb:.1f}G")
     except Exception:
         pass
-
-    # Tmux server uptime
     try:
         pid_raw = run_tmux("display-message", "-p", "#{pid}")
         if pid_raw:
             stat = f"/proc/{pid_raw}/stat"
             with open(stat) as f:
                 fields = f.read().split()
-            # Field 21 is starttime in clock ticks
             start_ticks = int(fields[21])
             with open("/proc/uptime") as f:
                 uptime_s = float(f.read().split()[0])
@@ -234,7 +217,6 @@ def _get_dashboard_stats(sessions: list[Session]) -> str:
                 parts.append(f"  🖥  tmux uptime: {_human_duration(tmux_age)}")
     except Exception:
         pass
-
     return "\n".join(parts)
 
 
@@ -246,6 +228,15 @@ def _fuzzy_match(query: str, text: str) -> bool:
         if qi < len(query) and char == query[qi]:
             qi += 1
     return qi == len(query)
+
+
+def _grid_columns(count: int) -> int:
+    """Determine number of grid columns based on session count."""
+    if count <= 2:
+        return 1
+    if count <= 4:
+        return 2
+    return 3
 
 
 class PickerApp(App):
@@ -264,11 +255,17 @@ class PickerApp(App):
         self._theme_names = list(THEMES.keys())
         self._theme_index = 0
         self._preview_session: Session | None = None
+        self._view_mode = "list"  # "list" or "grid"
+        self._grid_selected = 0  # Index in _filtered_sessions for grid
+        self._grid_refresh_interval = 0.5
+        self._grid_timer: Timer | None = None
+        self._list_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         yield Static(id="title-bar")
         yield Input(placeholder="Search sessions...", id="search")
-        with Horizontal(id="main-area"):
+        # List view (default)
+        with Horizontal(id="list-view"):
             with Vertical(id="left-panel"):
                 yield ListView(id="session-list")
                 yield Static(id="dashboard")
@@ -276,10 +273,13 @@ class PickerApp(App):
                 yield Static(id="session-details")
                 with VerticalScroll(id="preview-scroll"):
                     yield Static(id="preview-content")
+        # Grid view (hidden initially)
+        yield VerticalScroll(id="grid-view")
         yield Static(id="hint-bar")
 
     def on_mount(self) -> None:
         config = load_config()
+        self._grid_refresh_interval = config.grid_refresh_interval
         for t in THEMES.values():
             self.register_theme(t)
         saved = config.theme if config.theme in THEMES else self._theme_names[0]
@@ -295,26 +295,26 @@ class PickerApp(App):
         self._select_current_session()
         self._update_hint_bar()
         self.query_one("#search", Input).focus()
-        # Defer heavy work so the picker renders immediately
+        # Hide grid view initially
+        self.query_one("#grid-view").display = False
         self.call_after_refresh(self._deferred_init)
 
     def _deferred_init(self) -> None:
-        """Run after first render — start polls and update dashboard."""
         self._update_dashboard()
         session = self._get_highlighted_session()
         if session is not None:
             self._update_preview(session)
         self.set_interval(2, self._poll_state)
-        self.set_interval(1, self._poll_preview)
+        self._list_timer = self.set_interval(1, self._poll_preview)
 
     def _select_current_session(self) -> None:
-        """Highlight the session we launched the picker from."""
         if not self._current_session:
             return
         lv = self.query_one("#session-list", ListView)
         for i, session in enumerate(self._filtered_sessions):
             if session.name == self._current_session:
                 lv.index = i
+                self._grid_selected = i
                 break
 
     def _refresh_sessions(self) -> None:
@@ -330,11 +330,13 @@ class PickerApp(App):
             self._filtered_sessions = [
                 s for s in self._sessions if _fuzzy_match(query, s.name)
             ]
-        self._rebuild_list()
+        if self._view_mode == "list":
+            self._rebuild_list()
+        else:
+            self._rebuild_grid()
         self._update_title_bar()
 
     def _poll_state(self) -> None:
-        # Remember which session is highlighted by name, not index
         highlighted = self._get_highlighted_session()
         highlighted_name = highlighted.name if highlighted else None
 
@@ -344,62 +346,211 @@ class PickerApp(App):
         new_snapshot = {s.name: s.status for s in self._sessions}
         if old_snapshot != new_snapshot:
             self._apply_filter()
-            # Restore selection by name
             if highlighted_name:
-                lv = self.query_one("#session-list", ListView)
-                for i, s in enumerate(self._filtered_sessions):
-                    if s.name == highlighted_name:
-                        lv.index = i
-                        break
-        self._update_dashboard()
+                if self._view_mode == "list":
+                    lv = self.query_one("#session-list", ListView)
+                    for i, s in enumerate(self._filtered_sessions):
+                        if s.name == highlighted_name:
+                            lv.index = i
+                            break
+                else:
+                    for i, s in enumerate(self._filtered_sessions):
+                        if s.name == highlighted_name:
+                            self._grid_selected = i
+                            break
+        if self._view_mode == "list":
+            self._update_dashboard()
 
     def _poll_preview(self) -> None:
-        """Refresh the preview pane content every second."""
+        if self._view_mode != "list":
+            return
         session = self._get_highlighted_session()
         if session is not None:
             self._update_preview(session)
 
+    def _poll_grid(self) -> None:
+        if self._view_mode != "grid":
+            return
+        self._update_grid_previews()
+
     def _get_highlighted_session(self) -> Session | None:
-        lv = self.query_one("#session-list", ListView)
-        idx = lv.index
-        if idx is not None and 0 <= idx < len(self._filtered_sessions):
-            return self._filtered_sessions[idx]
+        if self._view_mode == "list":
+            lv = self.query_one("#session-list", ListView)
+            idx = lv.index
+            if idx is not None and 0 <= idx < len(self._filtered_sessions):
+                return self._filtered_sessions[idx]
+        else:
+            if 0 <= self._grid_selected < len(self._filtered_sessions):
+                return self._filtered_sessions[self._grid_selected]
         return None
 
     def _update_preview(self, session: Session) -> None:
-        """Update the preview panel with the pane capture of the given session."""
         self._preview_session = session
-
-        # Update session details panel
         label = _STATUS_LABEL.get(session.status, "")
         header = f"{session.status_icon}  [b]{session.name}[/b]  {label}\n"
         details = _get_session_details(session)
         self.query_one("#session-details", Static).update(header + details)
 
-        # Update pane preview
         content = _capture_pane(session)
-        # Strip trailing blank lines for cleaner display
         lines = content.rstrip("\n").split("\n")
-        # Remove leading empty lines too
         while lines and not lines[0].strip():
             lines.pop(0)
-        # Truncate lines to preview panel width to prevent wrapping
         try:
             panel = self.query_one("#preview-scroll")
-            max_width = panel.size.width - 2  # account for padding
+            max_width = panel.size.width - 2
             if max_width > 0:
                 lines = [line[:max_width] for line in lines]
         except Exception:
             pass
         rich_text = Text.from_ansi("\n".join(lines))
         self.query_one("#preview-content", Static).update(rich_text)
-        # Scroll preview to bottom so latest output is visible
         self.query_one("#preview-scroll").scroll_end(animate=False)
 
     def _update_dashboard(self) -> None:
-        """Update the dashboard stats at the bottom of the left panel."""
         stats = _get_dashboard_stats(self._sessions)
         self.query_one("#dashboard", Static).update(stats)
+
+    # ── Grid view ──
+
+    def _rebuild_grid(self) -> None:
+        """Rebuild the grid with session cells."""
+        container = self.query_one("#grid-view")
+        container.remove_children()
+
+        if not self._filtered_sessions:
+            container.mount(Static("[dim]No matching sessions[/dim]"))
+            return
+
+        cols = _grid_columns(len(self._filtered_sessions))
+        grid = Grid(id="session-grid", classes=f"grid-cols-{cols}")
+
+        for i, session in enumerate(self._filtered_sessions):
+            cell = self._make_grid_cell(session, i)
+            grid.mount(cell)
+
+        container.mount(grid)
+        self._update_grid_selection()
+
+    def _make_grid_cell(self, session: Session, index: int) -> Vertical:
+        """Create a single grid cell widget for a session."""
+        icon = session.status_icon
+        label = _STATUS_LABEL.get(session.status, "")
+        topic = session.last_message or self._topics.get(session.path, "")
+        if topic:
+            topic = topic.strip().split("\n")[0]
+            if len(topic) > 60:
+                topic = topic[:57] + "..."
+
+        d = session.details
+        branch = f" {d.git_branch}" if d.git_branch else ""
+
+        header = Static(f"{icon} [b]{session.name}[/b]  {label}", classes="cell-header")
+        meta = Static(f"📁 {session.path}{branch}", classes="cell-meta")
+        topic_w = Static(f"[dim]💬 {topic}[/dim]" if topic else "", classes="cell-topic")
+
+        preview = VerticalScroll(
+            Static("", id=f"cell-preview-{index}"),
+            classes="cell-preview",
+        )
+
+        cell = Vertical(
+            header, meta, topic_w, preview,
+            id=f"cell-{index}",
+            classes="grid-cell",
+        )
+        return cell
+
+    def _update_grid_previews(self) -> None:
+        """Update all grid cell pane captures."""
+        for i, session in enumerate(self._filtered_sessions):
+            try:
+                preview_widget = self.query_one(f"#cell-preview-{i}", Static)
+            except Exception:
+                continue
+
+            content = _capture_pane(session)
+            lines = content.rstrip("\n").split("\n")
+            while lines and not lines[0].strip():
+                lines.pop(0)
+
+            # Truncate to cell width
+            try:
+                cell = self.query_one(f"#cell-{i}")
+                max_width = cell.size.width - 4
+                if max_width > 0:
+                    lines = [line[:max_width] for line in lines]
+            except Exception:
+                pass
+
+            rich_text = Text.from_ansi("\n".join(lines))
+            preview_widget.update(rich_text)
+
+            # Scroll to bottom
+            try:
+                scroll = preview_widget.parent
+                if hasattr(scroll, "scroll_end"):
+                    scroll.scroll_end(animate=False)
+            except Exception:
+                pass
+
+        self._update_grid_selection()
+
+    def _update_grid_selection(self) -> None:
+        """Highlight the selected grid cell with a bright border."""
+        for i, session in enumerate(self._filtered_sessions):
+            try:
+                cell = self.query_one(f"#cell-{i}")
+            except Exception:
+                continue
+
+            color = _STATUS_BORDER_COLOR.get(session.status, "#565f89")
+            if i == self._grid_selected:
+                cell.styles.border = ("double", color)
+            else:
+                cell.styles.border = ("solid", color)
+
+    # ── View toggle ──
+
+    def _toggle_view(self) -> None:
+        """Switch between list and grid view."""
+        highlighted = self._get_highlighted_session()
+        highlighted_name = highlighted.name if highlighted else None
+
+        if self._view_mode == "list":
+            self._view_mode = "grid"
+            self.query_one("#list-view").display = False
+            self.query_one("#grid-view").display = True
+            # Stop list timer, start grid timer
+            if self._list_timer:
+                self._list_timer.stop()
+            self._rebuild_grid()
+            self._update_grid_previews()
+            self._grid_timer = self.set_interval(
+                self._grid_refresh_interval, self._poll_grid
+            )
+        else:
+            self._view_mode = "list"
+            self.query_one("#list-view").display = True
+            self.query_one("#grid-view").display = False
+            # Stop grid timer, start list timer
+            if self._grid_timer:
+                self._grid_timer.stop()
+            self._list_timer = self.set_interval(1, self._poll_preview)
+
+        # Restore selection by name
+        if highlighted_name:
+            for i, s in enumerate(self._filtered_sessions):
+                if s.name == highlighted_name:
+                    if self._view_mode == "list":
+                        lv = self.query_one("#session-list", ListView)
+                        lv.index = i
+                    else:
+                        self._grid_selected = i
+                    break
+
+        self._update_hint_bar()
+
+    # ── Events ──
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self._apply_filter()
@@ -413,7 +564,6 @@ class PickerApp(App):
             lv.index = 0
         if not self._filtered_sessions:
             lv.append(ListItem(Static("[dim]No matching sessions[/dim]")))
-        # Update preview for the first item
         session = self._get_highlighted_session()
         if session is not None:
             self._update_preview(session)
@@ -427,9 +577,9 @@ class PickerApp(App):
         total = len(self._sessions)
         shown = len(self._filtered_sessions)
         waiting = sum(1 for s in self._sessions if s.status == SessionStatus.WAITING_INPUT)
-
         count = f"{shown}/{total}" if shown != total else str(total)
-        parts = [f"[b]nagare[/b]  ·  {count} sessions"]
+        mode = "grid" if self._view_mode == "grid" else "list"
+        parts = [f"[b]nagare[/b]  ·  {count} sessions  ·  {mode}"]
         if waiting:
             parts.append(f"  🟡 {waiting} need{'s' if waiting == 1 else ''} input")
         self.query_one("#title-bar", Static).update("".join(parts))
@@ -440,10 +590,9 @@ class PickerApp(App):
         self.exit()
 
     def _jump_to_highlighted(self) -> None:
-        lv = self.query_one("#session-list", ListView)
-        idx = lv.index
-        if idx is not None and 0 <= idx < len(self._filtered_sessions):
-            self._jump_to_session(self._filtered_sessions[idx])
+        session = self._get_highlighted_session()
+        if session:
+            self._jump_to_session(session)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         lv = self.query_one("#session-list", ListView)
@@ -452,13 +601,22 @@ class PickerApp(App):
             self._jump_to_session(self._filtered_sessions[idx])
 
     def on_key(self, event) -> None:
+        if event.key == "tab":
+            self._toggle_view()
+            event.prevent_default()
+            event.stop()
+        elif self._view_mode == "list":
+            self._handle_list_key(event)
+        else:
+            self._handle_grid_key(event)
+
+    def _handle_list_key(self, event) -> None:
         if event.key in ("down", "up"):
             lv = self.query_one("#session-list", ListView)
             if event.key == "down":
                 lv.action_cursor_down()
             else:
                 lv.action_cursor_up()
-            # Immediately update preview on navigation
             session = self._get_highlighted_session()
             if session is not None:
                 self._update_preview(session)
@@ -473,10 +631,53 @@ class PickerApp(App):
             event.prevent_default()
             event.stop()
 
+    def _handle_grid_key(self, event) -> None:
+        n = len(self._filtered_sessions)
+        if n == 0:
+            return
+
+        cols = _grid_columns(n)
+        old = self._grid_selected
+
+        if event.key == "right":
+            self._grid_selected = min(self._grid_selected + 1, n - 1)
+        elif event.key == "left":
+            self._grid_selected = max(self._grid_selected - 1, 0)
+        elif event.key == "down":
+            new = self._grid_selected + cols
+            if new < n:
+                self._grid_selected = new
+        elif event.key == "up":
+            new = self._grid_selected - cols
+            if new >= 0:
+                self._grid_selected = new
+        elif event.key == "enter":
+            self._jump_to_highlighted()
+            event.prevent_default()
+            event.stop()
+            return
+        elif event.key == "ctrl+t":
+            self._cycle_theme()
+            event.prevent_default()
+            event.stop()
+            return
+        else:
+            return
+
+        if old != self._grid_selected:
+            self._update_grid_selection()
+        event.prevent_default()
+        event.stop()
+
     def _update_hint_bar(self) -> None:
         name = self._theme_names[self._theme_index]
+        if self._view_mode == "list":
+            nav = "[b]↑/↓[/b] Navigate"
+        else:
+            nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
-            f"[b]Enter[/b] Jump  [b]↑/↓[/b] Navigate  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
+            f"[b]Tab[/b] Toggle view  [b]Enter[/b] Jump  {nav}"
+            f"  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
 

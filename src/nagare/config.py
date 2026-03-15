@@ -46,6 +46,7 @@ class NagareConfig:
     notification_duration: int = 3000
     picker_width: str = "80%"
     picker_height: str = "80%"
+    grid_refresh_interval: float = 0.5
     theme: str = "tokyonight"
 
 
@@ -93,6 +94,7 @@ def load_config() -> NagareConfig:
         notification_duration=notifs.get("duration", 3000),
         picker_width=picker.get("popup_width", "80%"),
         picker_height=picker.get("popup_height", "80%"),
+        grid_refresh_interval=picker.get("grid_refresh_interval", 0.5),
         theme=appearance.get("theme", "tokyonight"),
     )
 

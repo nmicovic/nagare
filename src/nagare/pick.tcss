@@ -18,12 +18,12 @@ Screen {
     margin: 0 0 1 0;
 }
 
-#main-area {
+/* ── List view ── */
+
+#list-view {
     height: 1fr;
     layout: horizontal;
 }
-
-/* ── Left panel: session list + dashboard ── */
 
 #left-panel {
     width: 2fr;
@@ -43,8 +43,6 @@ Screen {
     padding: 1 1;
     color: $text-muted;
 }
-
-/* ── Right panel: session details + preview ── */
 
 #right-panel {
     width: 3fr;
@@ -70,8 +68,6 @@ Screen {
     height: auto;
 }
 
-/* ── List items ── */
-
 .session-item {
     height: auto;
     padding: 0;
@@ -86,6 +82,62 @@ ListItem {
 ListItem.-highlight {
     background: $surface;
 }
+
+/* ── Grid view ── */
+
+#grid-view {
+    height: 1fr;
+}
+
+#session-grid {
+    height: 1fr;
+    grid-gutter: 1;
+    padding: 0;
+}
+
+.grid-cols-1 {
+    grid-size: 1;
+}
+
+.grid-cols-2 {
+    grid-size: 2;
+}
+
+.grid-cols-3 {
+    grid-size: 3;
+}
+
+.grid-cell {
+    height: 100%;
+    background: $background;
+    border: solid $surface;
+    padding: 0 1;
+}
+
+.cell-header {
+    height: 1;
+    background: $surface;
+    padding: 0 1;
+}
+
+.cell-meta {
+    height: 1;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+.cell-topic {
+    height: 1;
+    padding: 0 1;
+}
+
+.cell-preview {
+    height: 1fr;
+    background: $background;
+    padding: 0;
+}
+
+/* ── Hint bar ── */
 
 #hint-bar {
     dock: bottom;
