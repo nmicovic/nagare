@@ -163,6 +163,15 @@ ListItem.-highlight {
     padding: 0 1;
 }
 
+/* ── Help overlay ── */
+
+#help-overlay {
+    height: 1fr;
+    background: $surface;
+    padding: 2 4;
+    color: $foreground;
+}
+
 /* ── Hint bar ── */
 
 #hint-bar {

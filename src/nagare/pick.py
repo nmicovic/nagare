@@ -29,6 +29,43 @@ _STATUS_SORT = {
     SessionStatus.DEAD: 3,
 }
 
+_SORT_MODES = ["status", "name", "agent"]
+
+
+def _sort_sessions(sessions: list[Session], mode: str) -> list[Session]:
+    """Sort sessions by the given mode."""
+    if mode == "name":
+        return sorted(sessions, key=lambda s: s.name.lower())
+    elif mode == "agent":
+        return sorted(sessions, key=lambda s: (s.agent_type.value, s.name.lower()))
+    else:  # status (default)
+        return sorted(sessions, key=lambda s: _STATUS_SORT.get(s.status, 99))
+
+
+_HELP_TEXT = """\
+[b]nagare — keyboard shortcuts[/b]
+
+[b]Navigation[/b]
+  [b]↑/↓[/b]          Move up/down (list & grid)
+  [b]←/→[/b]          Move left/right (grid only)
+  [b]Enter[/b]        Jump to selected session
+  [b]Esc[/b]          Close picker
+
+[b]Views[/b]
+  [b]Tab[/b]          Toggle list / grid view
+  [b]s[/b]            Cycle sort: status → name → agent
+
+[b]Settings[/b]
+  [b]Ctrl+e[/b]       Open config in editor
+  [b]Ctrl+t[/b]       Cycle color theme
+
+[b]Search[/b]
+  Type to fuzzy-filter sessions.
+  Best match is auto-selected.
+
+[b]?[/b]              Toggle this help
+"""
+
 _STATUS_LABEL = {
     SessionStatus.WAITING_INPUT: "[bold red]NEEDS INPUT[/bold red]",
     SessionStatus.RUNNING: "[bold yellow]WORKING[/bold yellow]",
@@ -279,6 +316,8 @@ class PickerApp(App):
         self._theme_index = 0
         self._preview_session: Session | None = None
         self._anim_config = AnimationConfig()
+        self._sort_mode = "status"
+        self._help_visible = False
         self._view_mode = "list"  # "list" or "grid"
         self._grid_selected = 0  # Index in _filtered_sessions for grid
         self._grid_generation = 0  # Increments each rebuild to avoid duplicate IDs
@@ -300,6 +339,8 @@ class PickerApp(App):
                     yield Static(id="preview-content")
         # Grid view (hidden initially)
         yield VerticalScroll(id="grid-view")
+        # Help overlay (hidden initially)
+        yield Static(_HELP_TEXT, id="help-overlay")
         yield Static(id="hint-bar")
 
     def on_mount(self) -> None:
@@ -321,8 +362,9 @@ class PickerApp(App):
         self._select_current_session()
         self._update_hint_bar()
         self.query_one("#search", Input).focus()
-        # Hide grid view initially
+        # Hide grid view and help initially
         self.query_one("#grid-view").display = False
+        self.query_one("#help-overlay").display = False
         self.call_after_refresh(self._deferred_init)
 
     def _deferred_init(self) -> None:
@@ -344,8 +386,7 @@ class PickerApp(App):
                 break
 
     def _refresh_sessions(self) -> None:
-        self._sessions = scan_sessions()
-        self._sessions.sort(key=lambda s: _STATUS_SORT.get(s.status, 99))
+        self._sessions = _sort_sessions(scan_sessions(), self._sort_mode)
         self._apply_filter()
 
     def _apply_filter(self) -> None:
@@ -382,8 +423,7 @@ class PickerApp(App):
         highlighted_name = highlighted.name if highlighted else None
 
         old_snapshot = {s.name: s.status for s in self._sessions}
-        self._sessions = scan_sessions()
-        self._sessions.sort(key=lambda s: _STATUS_SORT.get(s.status, 99))
+        self._sessions = _sort_sessions(scan_sessions(), self._sort_mode)
         new_snapshot = {s.name: s.status for s in self._sessions}
         if old_snapshot != new_snapshot:
             self._apply_filter()
@@ -675,7 +715,7 @@ class PickerApp(App):
         waiting = sum(1 for s in self._sessions if s.status == SessionStatus.WAITING_INPUT)
         count = f"{shown}/{total}" if shown != total else str(total)
         mode = "grid" if self._view_mode == "grid" else "list"
-        parts = [f"[b]nagare[/b]  ·  {count} sessions  ·  {mode}"]
+        parts = [f"[b]nagare[/b]  ·  {count} sessions  ·  {mode}  ·  sort: {self._sort_mode}"]
         if waiting:
             parts.append(f"  🟡 {waiting} need{'s' if waiting == 1 else ''} input")
         self.query_one("#title-bar", Static).update("".join(parts))
@@ -790,10 +830,27 @@ class PickerApp(App):
             self._jump_to_session(self._filtered_sessions[idx])
 
     def on_key(self, event) -> None:
-        if event.key == "tab":
+        # Global keys (work in both views)
+        if event.key == "question_mark":
+            self._toggle_help()
+            event.prevent_default()
+            event.stop()
+        elif self._help_visible:
+            # Any key dismisses help
+            self._toggle_help()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "tab":
             self._toggle_view()
             event.prevent_default()
             event.stop()
+        elif event.key == "s":
+            # Don't cycle sort if search input is focused
+            search = self.query_one("#search", Input)
+            if not search.value.strip():
+                self._cycle_sort()
+                event.prevent_default()
+                event.stop()
         elif event.key == "ctrl+e":
             self._open_config()
             event.prevent_default()
@@ -862,6 +919,31 @@ class PickerApp(App):
         event.prevent_default()
         event.stop()
 
+    def _cycle_sort(self) -> None:
+        """Cycle through sort modes: status → name → agent."""
+        idx = _SORT_MODES.index(self._sort_mode)
+        self._sort_mode = _SORT_MODES[(idx + 1) % len(_SORT_MODES)]
+        self._sessions = _sort_sessions(self._sessions, self._sort_mode)
+        self._apply_filter()
+        self._update_hint_bar()
+        self._update_title_bar()
+
+    def _toggle_help(self) -> None:
+        """Show/hide the help overlay."""
+        self._help_visible = not self._help_visible
+        overlay = self.query_one("#help-overlay")
+        overlay.display = self._help_visible
+        if self._help_visible:
+            # Hide the main views
+            self.query_one("#list-view").display = False
+            self.query_one("#grid-view").display = False
+        else:
+            # Restore the correct view
+            if self._view_mode == "list":
+                self.query_one("#list-view").display = True
+            else:
+                self.query_one("#grid-view").display = True
+
     def _open_config(self) -> None:
         """Ensure config has all sections, then open in editor."""
         import subprocess as sp
@@ -911,6 +993,7 @@ class PickerApp(App):
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
             f"[b]Tab[/b] View  [b]Enter[/b] Jump  {nav}"
+            f"  [b]s[/b] Sort  [b]?[/b] Help"
             f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
