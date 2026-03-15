@@ -452,9 +452,14 @@ class PickerApp(App):
         d = session.details
         branch = f" {d.git_branch}" if d.git_branch else ""
 
-        header = Static(f"{icon} [b]{session.name}[/b]  {label}", classes="cell-header")
-        meta = Static(f"📁 {session.path}{branch}", classes="cell-meta")
-        topic_w = Static(f"[dim]💬 {topic}[/dim]" if topic else "", classes="cell-topic")
+        header_content = [
+            Static(f"{icon} [b]{session.name}[/b]  {label}", classes="cell-title"),
+            Static(f"📁 {session.path}{branch}", classes="cell-meta"),
+        ]
+        if topic:
+            header_content.append(Static(f"[dim]💬 {topic}[/dim]", classes="cell-topic"))
+
+        header_box = Vertical(*header_content, classes="cell-header")
 
         preview = VerticalScroll(
             Static("", id=f"cell-preview-{gen}-{index}"),
@@ -462,7 +467,7 @@ class PickerApp(App):
         )
 
         cell = Vertical(
-            header, meta, topic_w, preview,
+            header_box, preview,
             id=f"cell-{gen}-{index}",
             classes="grid-cell",
         )

@@ -111,30 +111,37 @@ ListItem.-highlight {
     height: 100%;
     background: $background;
     border: solid $surface;
-    padding: 0 1;
+    padding: 0;
 }
 
 .cell-header {
-    height: 1;
+    height: auto;
+    max-height: 5;
     background: $surface;
+    border-bottom: solid $primary;
     padding: 0 1;
+}
+
+.cell-title {
+    height: 1;
+    padding: 0;
 }
 
 .cell-meta {
     height: 1;
     color: $text-muted;
-    padding: 0 1;
+    padding: 0;
 }
 
 .cell-topic {
     height: 1;
-    padding: 0 1;
+    padding: 0;
 }
 
 .cell-preview {
     height: 1fr;
     background: $background;
-    padding: 0;
+    padding: 0 1;
 }
 
 /* ── Hint bar ── */
