@@ -63,7 +63,7 @@ _HELP_TEXT = """\
   Type to fuzzy-filter sessions.
   Best match is auto-selected.
 
-[b]Ctrl+q[/b]        Toggle this help
+[b]F1[/b]        Toggle this help
 """
 
 _STATUS_LABEL = {
@@ -715,12 +715,7 @@ class PickerApp(App):
         waiting = sum(1 for s in self._sessions if s.status == SessionStatus.WAITING_INPUT)
         count = f"{shown}/{total}" if shown != total else str(total)
         mode = "grid" if self._view_mode == "grid" else "list"
-        sort_desc = {
-            "status": "sort: status [dim](needs input → working → idle → dead)[/dim]",
-            "name": "sort: name [dim](A→Z)[/dim]",
-            "agent": "sort: agent [dim](grouped by Claude / OpenCode)[/dim]",
-        }
-        parts = [f"[b]nagare[/b]  ·  {count} sessions  ·  {mode}  ·  {sort_desc[self._sort_mode]}"]
+        parts = [f"[b]nagare[/b]  ·  {count} sessions  ·  {mode}"]
         if waiting:
             parts.append(f"  🟡 {waiting} need{'s' if waiting == 1 else ''} input")
         self.query_one("#title-bar", Static).update("".join(parts))
@@ -841,7 +836,7 @@ class PickerApp(App):
             self._toggle_help()
             event.prevent_default()
             event.stop()
-        elif event.key == "ctrl+q":
+        elif event.key == "f1":
             self._toggle_help()
             event.prevent_default()
             event.stop()
@@ -989,14 +984,15 @@ class PickerApp(App):
 
     def _update_hint_bar(self) -> None:
         name = self._theme_names[self._theme_index]
+        sort_label = {"status": "status", "name": "A→Z", "agent": "agent"}
         if self._view_mode == "list":
             nav = "[b]↑/↓[/b] Navigate"
         else:
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
             f"[b]Tab[/b] View  [b]Enter[/b] Jump  {nav}"
-            f"  [b]Ctrl+s[/b] Sort  [b]Ctrl+q[/b] Help"
-            f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
+            f"  [b]Ctrl+s[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
+            f"  [b]F1[/b] Help  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
 
