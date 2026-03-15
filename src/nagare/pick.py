@@ -63,7 +63,7 @@ _HELP_TEXT = """\
   Type to fuzzy-filter sessions.
   Best match is auto-selected.
 
-[b]?[/b]              Toggle this help
+[b]Ctrl+q[/b]        Toggle this help
 """
 
 _STATUS_LABEL = {
@@ -715,7 +715,12 @@ class PickerApp(App):
         waiting = sum(1 for s in self._sessions if s.status == SessionStatus.WAITING_INPUT)
         count = f"{shown}/{total}" if shown != total else str(total)
         mode = "grid" if self._view_mode == "grid" else "list"
-        parts = [f"[b]nagare[/b]  ·  {count} sessions  ·  {mode}  ·  sort: {self._sort_mode}"]
+        sort_desc = {
+            "status": "sort: status [dim](needs input → working → idle → dead)[/dim]",
+            "name": "sort: name [dim](A→Z)[/dim]",
+            "agent": "sort: agent [dim](grouped by Claude / OpenCode)[/dim]",
+        }
+        parts = [f"[b]nagare[/b]  ·  {count} sessions  ·  {mode}  ·  {sort_desc[self._sort_mode]}"]
         if waiting:
             parts.append(f"  🟡 {waiting} need{'s' if waiting == 1 else ''} input")
         self.query_one("#title-bar", Static).update("".join(parts))
@@ -831,12 +836,12 @@ class PickerApp(App):
 
     def on_key(self, event) -> None:
         # Global keys (work in both views)
-        if event.key == "question_mark":
+        if self._help_visible:
+            # Any key dismisses help
             self._toggle_help()
             event.prevent_default()
             event.stop()
-        elif self._help_visible:
-            # Any key dismisses help
+        elif event.key == "ctrl+q":
             self._toggle_help()
             event.prevent_default()
             event.stop()
@@ -990,7 +995,7 @@ class PickerApp(App):
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
             f"[b]Tab[/b] View  [b]Enter[/b] Jump  {nav}"
-            f"  [b]Ctrl+s[/b] Sort  [b]?[/b] Help"
+            f"  [b]Ctrl+s[/b] Sort  [b]Ctrl+q[/b] Help"
             f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
