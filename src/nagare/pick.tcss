@@ -81,6 +81,7 @@ ListItem {
 
 ListItem.-highlight {
     background: $surface;
+    border-left: thick $primary;
 }
 
 /* ── Grid view ── */
