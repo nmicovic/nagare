@@ -784,6 +784,10 @@ class PickerApp(App):
             self._toggle_view()
             event.prevent_default()
             event.stop()
+        elif event.key == "ctrl+e":
+            self._open_config()
+            event.prevent_default()
+            event.stop()
         elif self._view_mode == "list":
             self._handle_list_key(event)
         else:
@@ -848,6 +852,47 @@ class PickerApp(App):
         event.prevent_default()
         event.stop()
 
+    def _open_config(self) -> None:
+        """Ensure config has all sections, then open in editor."""
+        import subprocess as sp
+        from pathlib import Path
+        from nagare.config import CONFIG_PATH
+        from nagare.setup import _DEFAULT_CONFIG
+
+        path = Path(CONFIG_PATH)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            path.write_text(_DEFAULT_CONFIG)
+        else:
+            # Append any missing sections from the default config
+            content = path.read_text()
+            missing = []
+            for section in ["[animation]", "[appearance]", "[picker]"]:
+                if section not in content:
+                    # Extract that section from the default config
+                    lines = _DEFAULT_CONFIG.splitlines()
+                    capturing = False
+                    section_lines = []
+                    for line in lines:
+                        if line.strip() == section or (
+                            capturing and line.startswith("# ── ")
+                        ):
+                            if capturing:
+                                break
+                            capturing = True
+                        if capturing:
+                            section_lines.append(line)
+                    if section_lines:
+                        missing.append("\n".join(section_lines))
+            if missing:
+                path.write_text(
+                    content.rstrip() + "\n\n" + "\n\n".join(missing) + "\n"
+                )
+
+        editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "vi"
+        self.exit()
+        sp.run([editor, str(path)])
+
     def _update_hint_bar(self) -> None:
         name = self._theme_names[self._theme_index]
         if self._view_mode == "list":
@@ -855,8 +900,8 @@ class PickerApp(App):
         else:
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
-            f"[b]Tab[/b] Toggle view  [b]Enter[/b] Jump  {nav}"
-            f"  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
+            f"[b]Tab[/b] View  [b]Enter[/b] Jump  {nav}"
+            f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
 
