@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-nagare is a tmux-integrated CLI tool for managing multiple Claude Code sessions. It provides a rich TUI picker for switching between sessions, live-streaming previews of what each session is doing, real-time state detection via Claude Code hooks, and tmux notifications when sessions need attention.
+nagare is a tmux-integrated CLI tool for managing multiple AI coding agent sessions. It supports **Claude Code** and **OpenCode**, providing a rich TUI picker for switching between sessions, live-streaming previews of what each session is doing, real-time state detection via hooks, and tmux notifications when sessions need attention.
 
-The core workflow: the user runs many Claude Code instances across tmux sessions simultaneously. nagare lets them see all sessions at a glance, monitor progress, get notified when input is needed, and jump to the right session instantly — all from a single keybinding (`prefix + g`).
+The core workflow: the user runs many AI agent instances across tmux sessions simultaneously. nagare lets them see all sessions at a glance, monitor progress, get notified when input is needed, and jump to the right session instantly — all from a single keybinding (`prefix + g`). Sessions are identified by agent type with colored icons: [#da7756]C[/] for Claude, [#00e5ff]O[/] for OpenCode.
 
 ## Architecture
 

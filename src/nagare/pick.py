@@ -39,8 +39,9 @@ _STATUS_LABEL = {
 
 def _format_line1(session: Session) -> str:
     icon = session.status_icon
+    agent = session.agent_icon
     label = _STATUS_LABEL.get(session.status, "")
-    return f"{icon}  [b]{session.name}[/b]  {label}"
+    return f"{icon}  {agent} [b]{session.name}[/b]  {label}"
 
 
 def _format_line2(session: Session) -> str:
@@ -503,8 +504,9 @@ class PickerApp(App):
         d = session.details
         branch = f" {d.git_branch}" if d.git_branch else ""
 
+        agent = session.agent_icon
         header_content = [
-            Static(f"{icon} [b]{session.name}[/b]  {label}", classes="cell-title"),
+            Static(f"{icon} {agent} [b]{session.name}[/b]  {label}", classes="cell-title"),
             Static(f"📁 {session.path}{branch}", classes="cell-meta"),
         ]
         if topic:

@@ -1,4 +1,4 @@
-from nagare.models import Session, SessionStatus
+from nagare.models import AgentType, Session, SessionStatus
 
 
 def test_session_creation():
@@ -40,3 +40,20 @@ def test_session_status_icons():
     assert waiting.status_icon == "[#db4b4b]●[/]"
     assert running.status_icon == "[#e0af68]●[/]"
     assert dead.status_icon == "[#565f89]●[/]"
+
+
+def test_agent_types():
+    claude = Session(name="a", session_id="$1", path="/tmp", window_index=0, pane_index=0,
+                     status=SessionStatus.IDLE, agent_type=AgentType.CLAUDE)
+    opencode = Session(name="b", session_id="$2", path="/tmp", window_index=0, pane_index=0,
+                       status=SessionStatus.IDLE, agent_type=AgentType.OPENCODE)
+    assert claude.agent_icon == "[#da7756]C[/]"
+    assert claude.agent_label == "Claude"
+    assert opencode.agent_icon == "[#00e5ff]O[/]"
+    assert opencode.agent_label == "OpenCode"
+
+
+def test_default_agent_type():
+    session = Session(name="a", session_id="$1", path="/tmp", window_index=0, pane_index=0,
+                      status=SessionStatus.IDLE)
+    assert session.agent_type == AgentType.CLAUDE

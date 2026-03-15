@@ -1,5 +1,24 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+
+
+class AgentType(Enum):
+    CLAUDE = "claude"
+    OPENCODE = "opencode"
+    UNKNOWN = "unknown"
+
+
+AGENT_ICONS: dict[AgentType, str] = {
+    AgentType.CLAUDE: "[#da7756]C[/]",
+    AgentType.OPENCODE: "[#00e5ff]O[/]",
+    AgentType.UNKNOWN: "[dim]?[/]",
+}
+
+AGENT_LABELS: dict[AgentType, str] = {
+    AgentType.CLAUDE: "Claude",
+    AgentType.OPENCODE: "OpenCode",
+    AgentType.UNKNOWN: "Unknown",
+}
 
 
 class SessionStatus(Enum):
@@ -40,12 +59,21 @@ class Session:
     window_index: int
     pane_index: int
     status: SessionStatus
-    details: SessionDetails = SessionDetails()
+    agent_type: AgentType = AgentType.CLAUDE
+    details: SessionDetails = field(default_factory=SessionDetails)
     last_message: str = ""
 
     @property
     def status_icon(self) -> str:
         return STATUS_ICONS[self.status]
+
+    @property
+    def agent_icon(self) -> str:
+        return AGENT_ICONS[self.agent_type]
+
+    @property
+    def agent_label(self) -> str:
+        return AGENT_LABELS[self.agent_type]
 
     @property
     def status_label(self) -> str:
