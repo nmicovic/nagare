@@ -1095,7 +1095,7 @@ class PickerApp(App):
         else:
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
-            f"[b]Tab[/b] View  [b]Enter[/b] Jump  [b]Ctrl+y[/b] Approve  {nav}"
+            f"[b]Tab[/b] View  [b]Enter[/b] Jump  [b]Ctrl+y[/b] Approve  [b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session  {nav}"
             f"  [b]Ctrl+s[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
             f"  [b]F1[/b] Help  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
