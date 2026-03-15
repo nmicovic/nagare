@@ -28,19 +28,20 @@ def _parse_sessions(raw: str) -> list[tuple[str, str, str]]:
     return sessions
 
 
-def _find_agent_pane(pane_output: str) -> tuple[int, int, AgentType] | None:
-    """Find the first pane running a recognized AI agent.
+def _find_agent_panes(pane_output: str) -> list[tuple[int, int, AgentType]]:
+    """Find ALL panes running recognized AI agents.
 
-    Returns (window_index, pane_index, agent_type) or None.
+    Returns list of (window_index, pane_index, agent_type).
     """
+    results = []
     for line in pane_output.splitlines():
         parts = line.split(":", 2)
         if len(parts) == 3:
             cmd = parts[2].strip()
             agent_type = _AGENT_PROCESSES.get(cmd)
             if agent_type is not None:
-                return (int(parts[0]), int(parts[1]), agent_type)
-    return None
+                results.append((int(parts[0]), int(parts[1]), agent_type))
+    return results
 
 
 def scan_sessions() -> list[Session]:
@@ -53,16 +54,14 @@ def scan_sessions() -> list[Session]:
             "list-panes", "-s", "-t", name,
             "-F", "#{window_index}:#{pane_index}:#{pane_current_command}",
         )
-        result = _find_agent_pane(pane_output)
-        if result is not None:
-            window_index, pane_index, agent_type = result
+        agents = _find_agent_panes(pane_output)
+        for window_index, pane_index, agent_type in agents:
             pane_content = run_tmux(
                 "capture-pane", "-t", f"{name}:{window_index}.{pane_index}", "-p",
             )
             details = parse_details(pane_content)
 
             # Prefer hook-based state over pane scraping
-            # (hooks only work for Claude currently)
             hook_state = hook_states.get(path)
             if hook_state is not None:
                 status = _HOOK_STATE_MAP.get(hook_state.state, SessionStatus.IDLE)

@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from nagare.tmux.scanner import scan_sessions, _parse_sessions, _find_agent_pane
+from nagare.tmux.scanner import scan_sessions, _parse_sessions, _find_agent_panes
 from nagare.models import AgentType, Session, SessionStatus
 
 
@@ -16,24 +16,32 @@ def test_parse_sessions_empty():
     assert _parse_sessions("") == []
 
 
-def test_find_agent_pane_claude():
+def test_find_agent_panes_claude():
     pane_output = "0:0:zsh\n0:1:claude\n0:2:zsh"
-    assert _find_agent_pane(pane_output) == (0, 1, AgentType.CLAUDE)
+    assert _find_agent_panes(pane_output) == [(0, 1, AgentType.CLAUDE)]
 
 
-def test_find_agent_pane_opencode():
+def test_find_agent_panes_opencode():
     pane_output = "0:0:zsh\n0:1:opencode"
-    assert _find_agent_pane(pane_output) == (0, 1, AgentType.OPENCODE)
+    assert _find_agent_panes(pane_output) == [(0, 1, AgentType.OPENCODE)]
 
 
-def test_find_agent_pane_in_second_window():
+def test_find_agent_panes_in_second_window():
     pane_output = "0:0:zsh\n1:0:zsh\n1:1:claude"
-    assert _find_agent_pane(pane_output) == (1, 1, AgentType.CLAUDE)
+    assert _find_agent_panes(pane_output) == [(1, 1, AgentType.CLAUDE)]
 
 
-def test_find_agent_pane_not_found():
+def test_find_agent_panes_not_found():
     pane_output = "0:0:zsh\n0:1:vim"
-    assert _find_agent_pane(pane_output) is None
+    assert _find_agent_panes(pane_output) == []
+
+
+def test_find_agent_panes_multiple():
+    pane_output = "0:0:claude\n1:0:opencode\n2:0:zsh"
+    results = _find_agent_panes(pane_output)
+    assert len(results) == 2
+    assert (0, 0, AgentType.CLAUDE) in results
+    assert (1, 0, AgentType.OPENCODE) in results
 
 
 @patch("nagare.tmux.scanner.run_tmux")
