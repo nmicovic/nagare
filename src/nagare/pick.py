@@ -53,7 +53,7 @@ _HELP_TEXT = """\
 
 [b]Views[/b]
   [b]Tab[/b]          Toggle list / grid view
-  [b]s[/b]            Cycle sort: status → name → agent
+  [b]Ctrl+s[/b]       Cycle sort: status → name → agent
 
 [b]Settings[/b]
   [b]Ctrl+e[/b]       Open config in editor
@@ -844,13 +844,10 @@ class PickerApp(App):
             self._toggle_view()
             event.prevent_default()
             event.stop()
-        elif event.key == "s":
-            # Don't cycle sort if search input is focused
-            search = self.query_one("#search", Input)
-            if not search.value.strip():
-                self._cycle_sort()
-                event.prevent_default()
-                event.stop()
+        elif event.key == "ctrl+s":
+            self._cycle_sort()
+            event.prevent_default()
+            event.stop()
         elif event.key == "ctrl+e":
             self._open_config()
             event.prevent_default()
@@ -993,7 +990,7 @@ class PickerApp(App):
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
             f"[b]Tab[/b] View  [b]Enter[/b] Jump  {nav}"
-            f"  [b]s[/b] Sort  [b]?[/b] Help"
+            f"  [b]Ctrl+s[/b] Sort  [b]?[/b] Help"
             f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
