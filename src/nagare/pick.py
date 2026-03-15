@@ -224,6 +224,34 @@ def _fuzzy_match(query: str, text: str) -> bool:
     return qi == len(query)
 
 
+def _fuzzy_score(query: str, text: str) -> int:
+    """Score a fuzzy match — higher is better. 0 means no match.
+
+    Scoring: prefix match bonus, consecutive char bonus, shorter name bonus.
+    """
+    q = query.lower()
+    t = text.lower()
+    qi = 0
+    score = 0
+    prev_pos = -2
+    for pos, char in enumerate(t):
+        if qi < len(q) and char == q[qi]:
+            score += 10
+            # Bonus for consecutive matches
+            if pos == prev_pos + 1:
+                score += 5
+            # Bonus for matching at start
+            if pos == qi:
+                score += 3
+            prev_pos = pos
+            qi += 1
+    if qi < len(q):
+        return 0  # Not a full match
+    # Bonus for shorter names (more specific match)
+    score += max(0, 20 - len(t))
+    return score
+
+
 def _grid_columns(count: int) -> int:
     """Determine number of grid columns based on session count."""
     if count <= 2:
@@ -322,13 +350,28 @@ class PickerApp(App):
         if not query:
             self._filtered_sessions = list(self._sessions)
         else:
-            self._filtered_sessions = [
-                s for s in self._sessions if _fuzzy_match(query, s.name)
+            # Score and sort by best match
+            scored = [
+                (s, _fuzzy_score(query, s.name))
+                for s in self._sessions
+                if _fuzzy_match(query, s.name)
             ]
+            scored.sort(key=lambda x: x[1], reverse=True)
+            self._filtered_sessions = [s for s, _ in scored]
+
         if self._view_mode == "list":
             self._rebuild_list()
         else:
             self._rebuild_grid()
+
+        # Select the best match (first item after sorting)
+        if self._filtered_sessions:
+            if self._view_mode == "list":
+                self.query_one("#session-list", ListView).index = 0
+            else:
+                self._grid_selected = 0
+                self._update_grid_selection()
+
         self._update_title_bar()
 
     def _poll_state(self) -> None:
