@@ -8,10 +8,30 @@ class AgentType(Enum):
     UNKNOWN = "unknown"
 
 
+# Single-line badge for list view
 AGENT_ICONS: dict[AgentType, str] = {
-    AgentType.CLAUDE: "[#da7756]C[/]",
-    AgentType.OPENCODE: "[#00e5ff]O[/]",
-    AgentType.UNKNOWN: "[dim]?[/]",
+    AgentType.CLAUDE: "[bold #da7756 on #3b2820] C [/]",
+    AgentType.OPENCODE: "[bold #00e5ff on #002b33] O [/]",
+    AgentType.UNKNOWN: "[dim] ? [/]",
+}
+
+# 3-line block art for grid view
+AGENT_BLOCK: dict[AgentType, tuple[str, str, str]] = {
+    AgentType.CLAUDE: (
+        "[bold #da7756 on #3b2820]╔═══╗[/]",
+        "[bold #da7756 on #3b2820]║ C ║[/]",
+        "[bold #da7756 on #3b2820]╚═══╝[/]",
+    ),
+    AgentType.OPENCODE: (
+        "[bold #00e5ff on #002b33]╔═══╗[/]",
+        "[bold #00e5ff on #002b33]║ O ║[/]",
+        "[bold #00e5ff on #002b33]╚═══╝[/]",
+    ),
+    AgentType.UNKNOWN: (
+        "[dim]╔═══╗[/]",
+        "[dim]║ ? ║[/]",
+        "[dim]╚═══╝[/]",
+    ),
 }
 
 AGENT_LABELS: dict[AgentType, str] = {
@@ -70,6 +90,10 @@ class Session:
     @property
     def agent_icon(self) -> str:
         return AGENT_ICONS[self.agent_type]
+
+    @property
+    def agent_block(self) -> tuple[str, str, str]:
+        return AGENT_BLOCK[self.agent_type]
 
     @property
     def agent_label(self) -> str:

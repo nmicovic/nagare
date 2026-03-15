@@ -47,10 +47,14 @@ def test_agent_types():
                      status=SessionStatus.IDLE, agent_type=AgentType.CLAUDE)
     opencode = Session(name="b", session_id="$2", path="/tmp", window_index=0, pane_index=0,
                        status=SessionStatus.IDLE, agent_type=AgentType.OPENCODE)
-    assert claude.agent_icon == "[#da7756]C[/]"
+    assert " C " in claude.agent_icon
     assert claude.agent_label == "Claude"
-    assert opencode.agent_icon == "[#00e5ff]O[/]"
+    assert " O " in opencode.agent_icon
     assert opencode.agent_label == "OpenCode"
+    # Block art for grid view
+    assert len(claude.agent_block) == 3
+    assert "C" in claude.agent_block[1]
+    assert "O" in opencode.agent_block[1]
 
 
 def test_default_agent_type():

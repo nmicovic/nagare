@@ -504,15 +504,23 @@ class PickerApp(App):
         d = session.details
         branch = f" {d.git_branch}" if d.git_branch else ""
 
-        agent = session.agent_icon
-        header_content = [
-            Static(f"{icon} {agent} [b]{session.name}[/b]  {label}", classes="cell-title"),
+        # Block art on the left (3 lines)
+        block = session.agent_block
+        block_widget = Static(
+            f"{block[0]}\n{block[1]}\n{block[2]}",
+            classes="cell-block",
+        )
+
+        # Session info on the right
+        info_lines = [
+            Static(f"{icon} [b]{session.name}[/b]  {label}", classes="cell-title"),
             Static(f"📁 {session.path}{branch}", classes="cell-meta"),
         ]
         if topic:
-            header_content.append(Static(f"[dim]💬 {topic}[/dim]", classes="cell-topic"))
+            info_lines.append(Static(f"[dim]💬 {topic}[/dim]", classes="cell-topic"))
+        info_widget = Vertical(*info_lines, classes="cell-info")
 
-        header_box = Vertical(*header_content, classes="cell-header")
+        header_box = Horizontal(block_widget, info_widget, classes="cell-header")
 
         preview = VerticalScroll(
             Static("", id=f"cell-preview-{gen}-{index}"),
