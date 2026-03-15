@@ -422,12 +422,11 @@ class PickerApp(App):
             return
 
         cols = _grid_columns(len(self._filtered_sessions))
-        grid = Grid(id="session-grid", classes=f"grid-cols-{cols}")
-
+        cells = []
         for i, session in enumerate(self._filtered_sessions):
-            cell = self._make_grid_cell(session, i)
-            grid.mount(cell)
+            cells.append(self._make_grid_cell(session, i))
 
+        grid = Grid(*cells, id="session-grid", classes=f"grid-cols-{cols}")
         container.mount(grid)
         self._update_grid_selection()
 
