@@ -22,15 +22,17 @@ The core workflow: the user runs many AI agent instances across tmux sessions si
 
 - **State Reader (`state.py`)** — Reads hook-written state files keyed by project path (cwd). Resolves conflicts when multiple sessions share the same cwd by preferring live states over dead ones, and most recent timestamps among equals.
 
-- **Scanner (`tmux/scanner.py`)** — Discovers tmux sessions, finds Claude Code panes across all windows (`list-panes -s`), combines hook state with pane-scraping fallback for status detection.
+- **Scanner (`tmux/scanner.py`)** — Discovers tmux sessions, finds ALL AI agent panes (Claude Code and OpenCode) across all windows (`list-panes -s`). A single tmux session can contain multiple agents. Combines hook state with pane-scraping fallback for status detection.
 
 - **Status Detection (`tmux/status.py`)** — Fallback pane content scraping when hooks haven't fired yet. Detects idle prompts, choice/confirmation dialogs, running spinners.
 
 - **History (`history.py`)** — Reads `~/.claude/history.jsonl` for conversation topics per project.
 
-- **Notification Center (`notifs.py`)** — ListView-based TUI for viewing stored notifications. Launched via `prefix + e`.
+- **Notification Center (`notifs.py`)** — ListView-based TUI with two tabs: Notifications (view/dismiss/jump) and Settings (interactive toggle switches for notification config). Launched via `prefix + e`.
 
 - **Themes (`themes.py`)** — Multiple tokyonight variants + other themes. Cyclable with `Ctrl+t` in picker.
+
+- **OpenCode Plugin (`opencode_plugin.ts`)** — TypeScript plugin for OpenCode that writes state files in the same format as Claude hooks. Installed to `~/.config/opencode/plugin/nagare.ts` by `nagare setup`.
 
 ### State Flow
 
@@ -39,6 +41,8 @@ Claude Code hooks → stdin JSON → hooks.py → state files (JSON)
                                           → config check (per-event, per-session)
                                           → delivery: toast / bell / os_notify / popup
                                           → notification store (JSON)
+
+OpenCode plugin → event handler → state files (same JSON format)
 
 Picker poll (2s) → scanner.py → state.py (read state files) → UI update
 Picker poll (1s) → tmux capture-pane → preview panel update
@@ -87,12 +91,14 @@ Picker poll (1s) → tmux capture-pane → preview panel update
 ## Git Conventions
 
 - Do NOT include "Co-Authored-By" lines or any mention of Claude/AI in commit messages.
+- Do NOT commit without user telling you to do so.
 
 ## Logging & Debugging
 
 All nagare modules log to `~/.local/share/nagare/nagare.log` (1MB rotating, 3 backups). Use `from nagare.log import logger` in any module.
 
 When debugging issues — **always read the log first**:
+
 ```bash
 tail -50 ~/.local/share/nagare/nagare.log
 ```
