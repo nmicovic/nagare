@@ -50,6 +50,7 @@ _HELP_TEXT = """\
   [b]←/→[/b]          Move left/right (grid only)
   [b]Enter[/b]        Jump to selected session
   [b]Ctrl+y[/b]       Quick approve (NEEDS INPUT sessions only)
+  [b]Ctrl+n[/b]       New session
   [b]Ctrl+w[/b]       Kill agent pane
   [b]Ctrl+x[/b]       Kill entire tmux session
   [b]Esc[/b]          Close picker
@@ -891,6 +892,10 @@ class PickerApp(App):
             self._cycle_sort()
             event.prevent_default()
             event.stop()
+        elif event.key == "ctrl+n":
+            self._new_session()
+            event.prevent_default()
+            event.stop()
         elif event.key == "ctrl+e":
             self._open_config()
             event.prevent_default()
@@ -1046,6 +1051,10 @@ class PickerApp(App):
             else:
                 self.query_one("#grid-view").display = True
 
+    def _new_session(self) -> None:
+        """Exit picker with a signal to open the new-session form."""
+        self.exit(result="new_session")
+
     def _open_config(self) -> None:
         """Ensure config has all sections, then open in editor."""
         import subprocess as sp
@@ -1095,7 +1104,7 @@ class PickerApp(App):
         else:
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
-            f"[b]F1[/b] Help  [b]Tab[/b] View  {nav}  [b]Enter[/b] Jump"
+            f"[#7aa2f7][b]Ctrl+n[/b] New[/]  [b]F1[/b] Help  [b]Tab[/b] View  {nav}  [b]Enter[/b] Jump"
             f"  [#00D26A][b]Ctrl+y[/b] Approve[/]  [#db4b4b][b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session[/]"
             f"  [b]Ctrl+s[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
             f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"

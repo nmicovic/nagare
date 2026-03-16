@@ -1,0 +1,64 @@
+Screen {
+    layout: vertical;
+    align: center middle;
+    background: $background;
+}
+
+#new-session-form {
+    width: 70;
+    height: auto;
+    max-height: 30;
+    background: $surface;
+    border: solid $primary;
+    padding: 1 2;
+}
+
+#form-title {
+    height: 1;
+    text-align: center;
+    color: $primary;
+    margin: 0 0 1 0;
+}
+
+.form-label {
+    height: 1;
+    color: $foreground;
+    margin: 1 0 0 0;
+}
+
+#path-input, #name-input {
+    height: 1;
+    border: none;
+    margin: 0 0 0 2;
+}
+
+#path-suggestions {
+    max-height: 6;
+    background: $background;
+    margin: 0 0 0 2;
+}
+
+#path-suggestions ListItem {
+    height: 1;
+    padding: 0;
+    background: $background;
+}
+
+#path-suggestions ListItem.-highlight {
+    background: $panel;
+}
+
+#agent-select {
+    height: auto;
+    margin: 0 0 0 2;
+}
+
+#continue-switch {
+    margin: 0 0 0 2;
+}
+
+#form-hint {
+    height: auto;
+    color: $text-muted;
+    margin: 1 0 0 0;
+}
