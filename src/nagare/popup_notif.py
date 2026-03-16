@@ -10,6 +10,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
 
 from nagare.config import load_config
+from nagare.log import logger
 from nagare.themes import THEMES
 from nagare.tmux import run_tmux
 
@@ -43,6 +44,8 @@ class PopupNotifApp(App):
     BINDINGS = [
         Binding("escape", "dismiss", "Dismiss", show=False),
         Binding("enter", "jump", "Jump to session", show=False),
+        Binding("ctrl+y", "approve", "Allow", show=False),
+        Binding("ctrl+a", "approve_always", "Allow always", show=False),
     ]
 
     def __init__(
@@ -81,7 +84,6 @@ class PopupNotifApp(App):
         self.set_interval(1, self._tick)
 
     def _update_header(self) -> None:
-        """Build the notification header with status, session name, and message."""
         if self._event_type == "needs_input":
             icon = "[#db4b4b]●[/]"
             label = "[bold #db4b4b]NEEDS INPUT[/bold #db4b4b]"
@@ -102,7 +104,6 @@ class PopupNotifApp(App):
         self.query_one("#notif-header", Static).update("\n".join(parts))
 
     def _update_preview(self) -> None:
-        """Capture and display the session's pane content."""
         content = _capture_pane(self._session_name)
         if not content.strip():
             self.query_one("#preview-content", Static).update(
@@ -111,11 +112,9 @@ class PopupNotifApp(App):
             return
 
         lines = content.rstrip("\n").split("\n")
-        # Strip leading empty lines
         while lines and not lines[0].strip():
             lines.pop(0)
 
-        # Truncate to panel width
         try:
             panel = self.query_one("#preview-scroll")
             max_width = panel.size.width - 2
@@ -129,8 +128,13 @@ class PopupNotifApp(App):
         self.query_one("#preview-scroll").scroll_end(animate=False)
 
     def _update_hint_bar(self) -> None:
+        if self._event_type == "needs_input":
+            approve = "  [#00D26A][b]Ctrl+y[/b] Allow[/]  [#00D26A][b]Ctrl+a[/b] Allow always[/]"
+        else:
+            approve = ""
         self.query_one("#hint-bar", Static).update(
-            f" [b]Enter[/b] Jump to session  [b]Esc[/b] Dismiss"
+            f" [b]Enter[/b] Jump to session{approve}"
+            f"  [b]Esc[/b] Dismiss"
             f"  │  Auto-closing in {self._countdown}s"
         )
 
@@ -150,6 +154,28 @@ class PopupNotifApp(App):
             run_tmux("switch-client", "-t", self._session_name)
         except Exception:
             pass
+        self.exit()
+
+    def action_approve(self) -> None:
+        """Send Enter to allow the current permission prompt."""
+        if self._event_type != "needs_input":
+            return
+        try:
+            run_tmux("send-keys", "-t", self._session_name, "Enter")
+            logger.info("popup approve (allow) sent to %s", self._session_name)
+        except Exception:
+            logger.exception("popup approve failed for %s", self._session_name)
+        self.exit()
+
+    def action_approve_always(self) -> None:
+        """Send Down + Enter to select 'Allow always' option."""
+        if self._event_type != "needs_input":
+            return
+        try:
+            run_tmux("send-keys", "-t", self._session_name, "Down", "Enter")
+            logger.info("popup approve (allow always) sent to %s", self._session_name)
+        except Exception:
+            logger.exception("popup approve_always failed for %s", self._session_name)
         self.exit()
 
 
