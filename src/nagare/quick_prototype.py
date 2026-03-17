@@ -68,7 +68,7 @@ class QuickPrototypeApp(App):
         if not name:
             return
 
-        # Check if directory already exists
+        # Resolve once and pass the absolute path to create_session
         resolved = Path(resolve_path(name)).expanduser().resolve()
         if resolved.exists():
             self.query_one("#form-title", Static).update(
@@ -82,7 +82,7 @@ class QuickPrototypeApp(App):
 
         try:
             session_name = create_session(
-                path=name,
+                path=str(resolved),
                 name=name,
                 agent=agent,
                 continue_session=False,

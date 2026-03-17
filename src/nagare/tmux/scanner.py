@@ -1,4 +1,4 @@
-from nagare.models import AgentType, Session, SessionStatus
+from nagare.models import AgentType, Session, SessionDetails, SessionStatus
 from nagare.state import load_all_states
 from nagare.tmux import run_tmux
 from nagare.tmux.status import detect_status, parse_details
@@ -28,6 +28,27 @@ def _parse_sessions(raw: str) -> list[tuple[str, str, str]]:
     return sessions
 
 
+def _parse_all_panes(raw: str) -> dict[str, list[tuple[int, int, AgentType]]]:
+    """Parse `list-panes -a` output into a dict keyed by session name.
+
+    Each value is a list of (window_index, pane_index, agent_type) for agent panes.
+    """
+    result: dict[str, list[tuple[int, int, AgentType]]] = {}
+    if not raw:
+        return result
+    for line in raw.splitlines():
+        parts = line.split(":", 3)
+        if len(parts) != 4:
+            continue
+        session_name, window_idx, pane_idx, cmd = parts
+        agent_type = _AGENT_PROCESSES.get(cmd.strip())
+        if agent_type is not None:
+            result.setdefault(session_name, []).append(
+                (int(window_idx), int(pane_idx), agent_type)
+            )
+    return result
+
+
 def _find_agent_panes(pane_output: str) -> list[tuple[int, int, AgentType]]:
     """Find ALL panes running recognized AI agents.
 
@@ -48,25 +69,31 @@ def scan_sessions() -> list[Session]:
     raw = run_tmux("list-sessions", "-F", "#{session_name}:#{session_id}:#{session_path}")
     parsed = _parse_sessions(raw)
     hook_states = load_all_states()
+
+    # Single call to get all panes across all sessions
+    all_panes_raw = run_tmux(
+        "list-panes", "-a",
+        "-F", "#{session_name}:#{window_index}:#{pane_index}:#{pane_current_command}",
+    )
+    all_panes = _parse_all_panes(all_panes_raw)
+
     sessions = []
     for name, session_id, path in parsed:
-        pane_output = run_tmux(
-            "list-panes", "-s", "-t", name,
-            "-F", "#{window_index}:#{pane_index}:#{pane_current_command}",
-        )
-        agents = _find_agent_panes(pane_output)
+        agents = all_panes.get(name, [])
         for window_index, pane_index, agent_type in agents:
-            pane_content = run_tmux(
-                "capture-pane", "-t", f"{name}:{window_index}.{pane_index}", "-p",
-            )
-            details = parse_details(pane_content)
-
-            # Prefer hook-based state over pane scraping
             hook_state = hook_states.get(path)
+
+            # Skip capture-pane when hook state exists (capture is only
+            # needed for detect_status fallback and parse_details)
             if hook_state is not None:
                 status = _HOOK_STATE_MAP.get(hook_state.state, SessionStatus.IDLE)
                 last_message = hook_state.last_message
+                details = SessionDetails()
             else:
+                pane_content = run_tmux(
+                    "capture-pane", "-t", f"{name}:{window_index}.{pane_index}", "-p",
+                )
+                details = parse_details(pane_content)
                 status = detect_status(pane_content)
                 last_message = ""
 

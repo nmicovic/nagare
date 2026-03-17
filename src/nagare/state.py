@@ -59,3 +59,17 @@ def load_all_states() -> dict[str, SessionState]:
             continue
 
     return states
+
+
+def mark_path_dead(cwd: str) -> None:
+    """Mark all state files matching *cwd* as dead."""
+    if not STATES_DIR.exists():
+        return
+    for f in STATES_DIR.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+            if data.get("cwd") == cwd:
+                data["state"] = "dead"
+                f.write_text(json.dumps(data))
+        except (OSError, json.JSONDecodeError):
+            pass

@@ -19,6 +19,7 @@ from nagare.config import AnimationConfig, load_config, save_theme
 from nagare.log import logger
 from nagare.history import load_conversation_topics
 from nagare.models import Session, SessionStatus
+from nagare.state import mark_path_dead
 from nagare.themes import THEMES
 from nagare.tmux import run_tmux
 from nagare.tmux.scanner import scan_sessions
@@ -330,10 +331,10 @@ class NagareCommands(Provider):
     """Command palette provider for nagare picker actions."""
 
     def _commands(self):
-        config = load_config()
+        quick_path = getattr(getattr(self.app, "_config", None), "quick_project_path", "~/Prototypes")
         return [
         ("New Session", "Create a new tmux session with an agent (Ctrl+n)", "_new_session"),
-        ("Quick Prototype", f"Fast prototype in {config.quick_project_path} (Ctrl+r)", "_quick_prototype"),
+        ("Quick Prototype", f"Fast prototype in {quick_path} (Ctrl+r)", "_quick_prototype"),
         ("Toggle Grid View", "Switch between list and grid (Tab)", "_toggle_view"),
         ("Cycle Sort", "Cycle sort: status → name → agent (Ctrl+s)", "_cycle_sort"),
         ("Cycle Theme", "Change color theme (Ctrl+t)", "_cycle_theme"),
@@ -419,6 +420,7 @@ class PickerApp(App):
 
     def on_mount(self) -> None:
         config = load_config()
+        self._config = config
         self._anim_config = config.animation
         self._grid_refresh_interval = config.grid_refresh_interval
         for t in THEMES.values():
@@ -470,9 +472,9 @@ class PickerApp(App):
         else:
             # Score and sort by best match
             scored = [
-                (s, _fuzzy_score(query, s.name))
+                (s, score)
                 for s in self._sessions
-                if _fuzzy_match(query, s.name)
+                if (score := _fuzzy_score(query, s.name)) > 0
             ]
             scored.sort(key=lambda x: x[1], reverse=True)
             self._filtered_sessions = [s for s, _ in scored]
@@ -924,54 +926,33 @@ class PickerApp(App):
         except Exception:
             return False
 
+    _KEY_DISPATCH = {
+        "f1": "_toggle_help",
+        "tab": "_toggle_view",
+        "ctrl+y": "_quick_approve",
+        "ctrl+a": "_quick_approve_always",
+        "ctrl+w": "_kill_agent_pane",
+        "ctrl+x": "_kill_tmux_session",
+        "ctrl+s": "_cycle_sort",
+        "ctrl+n": "_new_session",
+        "ctrl+r": "_quick_prototype",
+        "ctrl+e": "_open_config",
+    }
+
     def on_key(self, event) -> None:
         # Don't handle keys when command palette is open
         if self._is_command_palette_open():
             return
-        # Global keys (work in both views)
+        # Any key dismisses help
         if self._help_visible:
-            # Any key dismisses help
             self._toggle_help()
             event.prevent_default()
             event.stop()
-        elif event.key == "f1":
-            self._toggle_help()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "tab":
-            self._toggle_view()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+y":
-            self._quick_approve()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+a":
-            self._quick_approve_always()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+w":
-            self._kill_agent_pane()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+x":
-            self._kill_tmux_session()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+s":
-            self._cycle_sort()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+n":
-            self._new_session()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+r":
-            self._quick_prototype()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "ctrl+e":
-            self._open_config()
+            return
+
+        method_name = self._KEY_DISPATCH.get(event.key)
+        if method_name is not None:
+            getattr(self, method_name)()
             event.prevent_default()
             event.stop()
         elif self._view_mode == "list":
@@ -1073,17 +1054,7 @@ class PickerApp(App):
             return
         target = f"{session.name}:{session.window_index}.{session.pane_index}"
         try:
-            # Mark state as dead immediately
-            from nagare.state import STATES_DIR
-            import json
-            for f in STATES_DIR.glob("*.json"):
-                try:
-                    data = json.loads(f.read_text())
-                    if data.get("cwd") == session.path:
-                        data["state"] = "dead"
-                        f.write_text(json.dumps(data))
-                except Exception:
-                    pass
+            mark_path_dead(session.path)
             run_tmux("kill-pane", "-t", target)
             logger.info("killed agent pane %s", target)
         except Exception:
@@ -1097,17 +1068,7 @@ class PickerApp(App):
             return
         name = session.name
         try:
-            # Mark all state files for this session's path as dead
-            from nagare.state import STATES_DIR
-            import json
-            for f in STATES_DIR.glob("*.json"):
-                try:
-                    data = json.loads(f.read_text())
-                    if data.get("cwd") == session.path:
-                        data["state"] = "dead"
-                        f.write_text(json.dumps(data))
-                except Exception:
-                    pass
+            mark_path_dead(session.path)
             run_tmux("kill-session", "-t", name)
             logger.info("killed tmux session %s", name)
         except Exception:
