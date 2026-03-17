@@ -16,8 +16,13 @@ def main() -> None:
             result = app.run()
             if result == "new_session":
                 from nagare.new_session import NewSessionApp
-                form = NewSessionApp()
-                form_result = form.run()
+                form_result = NewSessionApp().run()
+                if form_result == "back_to_picker":
+                    continue
+                break
+            elif result == "quick_prototype":
+                from nagare.quick_prototype import QuickPrototypeApp
+                form_result = QuickPrototypeApp().run()
                 if form_result == "back_to_picker":
                     continue
                 break

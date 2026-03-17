@@ -61,6 +61,12 @@ min_working_seconds = 30
 # popup = true
 # os_notify = true
 
+# ── Picker ─────────────────────────────────────────────────────
+[picker]
+# Root directory for quick prototypes (Ctrl+p in picker)
+# Just type a name and nagare creates the dir + tmux session + agent
+quick_project_path = "~/Prototypes"
+
 # ── Animation ──────────────────────────────────────────────────
 [animation]
 # Animation when jumping to a session from the picker
@@ -199,12 +205,6 @@ def run_setup() -> None:
         print(f"Plugin installed: {OPENCODE_PLUGIN_DIR / 'nagare.ts'}")
     else:
         print("Could not install OpenCode plugin.")
-
-    # Install tmux popup hook for notification overlays
-    print("\nInstalling tmux popup hook...")
-    from nagare.notifications.deliver import install_tmux_popup_hook
-    install_tmux_popup_hook()
-    print("Popup hook installed (pane-focus-in)")
 
     print("\nAdd these lines to your ~/.tmux.conf:\n")
     print(generate_tmux_config())

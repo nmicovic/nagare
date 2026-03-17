@@ -2,8 +2,21 @@
 
 from pathlib import Path
 
+from nagare.config import load_config
 from nagare.log import logger
 from nagare.tmux import run_tmux
+
+
+def resolve_path(path: str) -> str:
+    """Resolve a path, treating bare names as quick projects.
+
+    If path has no '/' or '~', treat it as a subdirectory of
+    the configured quick_project_path.
+    """
+    if "/" not in path and "~" not in path:
+        config = load_config()
+        return f"{config.quick_project_path}/{path}"
+    return path
 
 
 def create_session(
@@ -27,9 +40,13 @@ def create_session(
         ValueError: If path doesn't exist or isn't a directory.
         RuntimeError: If session creation fails.
     """
+    path = resolve_path(path)
     resolved = Path(path).expanduser().resolve()
+    if not resolved.exists():
+        resolved.mkdir(parents=True, exist_ok=True)
+        logger.info("created directory %s", resolved)
     if not resolved.is_dir():
-        raise ValueError(f"Path does not exist or is not a directory: {path}")
+        raise ValueError(f"Path is not a directory: {path}")
 
     if name is None:
         name = resolved.name

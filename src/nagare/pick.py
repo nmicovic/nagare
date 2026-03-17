@@ -10,6 +10,7 @@ _BG_COLOR_RE = re.compile(r"\x1b\[(?:48;[25](?:;[\d]+)*|49)m")
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.command import Provider, Hits, Hit, DiscoveryHit
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.timer import Timer
 from textual.widgets import Input, ListView, ListItem, Static
@@ -49,8 +50,10 @@ _HELP_TEXT = """\
   [b]↑/↓[/b]          Move up/down (list & grid)
   [b]←/→[/b]          Move left/right (grid only)
   [b]Enter[/b]        Jump to selected session
-  [b]Ctrl+y[/b]       Quick approve (NEEDS INPUT sessions only)
+  [b]Ctrl+y[/b]       Allow (NEEDS INPUT sessions only)
+  [b]Ctrl+a[/b]       Allow always (NEEDS INPUT sessions only)
   [b]Ctrl+n[/b]       New session
+  [b]Ctrl+r[/b]       Quick prototype
   [b]Ctrl+w[/b]       Kill agent pane
   [b]Ctrl+x[/b]       Kill entire tmux session
   [b]Esc[/b]          Close picker
@@ -93,13 +96,14 @@ def _get_all_session_ages() -> dict[str, str]:
         return {}
 
 
-def _format_line1(session: Session, ages: dict[str, str] | None = None) -> str:
+def _format_line1(session: Session, ages: dict[str, str] | None = None, current: bool = False) -> str:
     icon = session.status_icon
     agent = session.agent_icon
     label = _STATUS_LABEL.get(session.status, "")
     age = (ages or {}).get(session.name, "")
     age_str = f"  [dim]⏱ {age}[/dim]" if age else ""
-    return f"{icon}  {agent} [b]{session.name}[/b]  {label}{age_str}"
+    here = "  [#7aa2f7]◄ you[/]" if current else ""
+    return f"{icon}  {agent} [b]{session.name}[/b]{here}  {label}{age_str}"
 
 
 def _format_line2(session: Session) -> str:
@@ -128,9 +132,10 @@ def _format_topic(session: Session, topics: dict[str, str]) -> str:
     return f"    [dim italic]💬 {topic}[/dim italic]"
 
 
-def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | None = None) -> ListItem:
+def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | None = None, current_session: str = "") -> ListItem:
+    is_current = session.name == current_session
     children = [
-        Static(_format_line1(session, ages)),
+        Static(_format_line1(session, ages, current=is_current)),
         Static(_format_line2(session)),
         Static(_format_line3(session)),
     ]
@@ -138,7 +143,8 @@ def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | 
     if topic_line:
         children.append(Static(topic_line))
     lines = Vertical(*children, classes="session-item")
-    return ListItem(lines)
+    classes = "current-session" if is_current else ""
+    return ListItem(lines, classes=classes)
 
 
 def _capture_pane(session: Session) -> str:
@@ -320,9 +326,52 @@ def _grid_columns(count: int) -> int:
     return 3
 
 
+class NagareCommands(Provider):
+    """Command palette provider for nagare picker actions."""
+
+    def _commands(self):
+        config = load_config()
+        return [
+        ("New Session", "Create a new tmux session with an agent (Ctrl+n)", "_new_session"),
+        ("Quick Prototype", f"Fast prototype in {config.quick_project_path} (Ctrl+r)", "_quick_prototype"),
+        ("Toggle Grid View", "Switch between list and grid (Tab)", "_toggle_view"),
+        ("Cycle Sort", "Cycle sort: status → name → agent (Ctrl+s)", "_cycle_sort"),
+        ("Cycle Theme", "Change color theme (Ctrl+t)", "_cycle_theme"),
+        ("Open Config", "Edit config file in editor (Ctrl+e)", "_open_config"),
+        ("Help", "Show keyboard shortcuts (F1)", "_toggle_help"),
+        ("Allow", "Send allow to NEEDS INPUT session (Ctrl+y)", "_quick_approve"),
+        ("Allow Always", "Send allow-always to NEEDS INPUT session (Ctrl+a)", "_quick_approve_always"),
+        ("Kill Agent Pane", "Kill the selected agent pane (Ctrl+w)", "_kill_agent_pane"),
+        ("Kill Session", "Kill the entire tmux session (Ctrl+x)", "_kill_tmux_session"),
+        ]
+
+    def _make_callback(self, method_name: str):
+        """Create a callback that calls an app method."""
+        def callback() -> None:
+            try:
+                method = getattr(self.app, method_name, None)
+                if method:
+                    method()
+            except Exception:
+                logger.exception("command palette: %s failed", method_name)
+        return callback
+
+    async def discover(self) -> Hits:
+        for name, help_text, method_name in self._commands():
+            yield DiscoveryHit(name, self._make_callback(method_name), help=help_text)
+
+    async def search(self, query: str) -> Hits:
+        matcher = self.matcher(query)
+        for name, help_text, method_name in self._commands():
+            score = matcher.match(name)
+            if score > 0:
+                yield Hit(score, matcher.highlight(name), self._make_callback(method_name), help=help_text)
+
+
 class PickerApp(App):
     CSS_PATH = "pick.tcss"
     TITLE = "nagare pick"
+    COMMANDS = {NagareCommands}
 
     BINDINGS = [
         Binding("escape", "quit", "Cancel", show=False),
@@ -363,6 +412,10 @@ class PickerApp(App):
         # Help overlay (hidden initially)
         yield Static(_HELP_TEXT, id="help-overlay")
         yield Static(id="hint-bar")
+
+    def on_exception(self, error: Exception) -> None:
+        """Log any unhandled Textual exceptions."""
+        logger.exception("Unhandled Textual exception: %s", error)
 
     def on_mount(self) -> None:
         config = load_config()
@@ -573,8 +626,10 @@ class PickerApp(App):
         )
 
         # Session info on the right
+        is_current = session.name == self._current_session
+        here = "  [#7aa2f7]◄ you[/]" if is_current else ""
         info_lines = [
-            Static(f"{icon} [b]{session.name}[/b]  {label}", classes="cell-title"),
+            Static(f"{icon} [b]{session.name}[/b]{here}  {label}", classes="cell-title"),
             Static(f"📁 {session.path}{branch}", classes="cell-meta"),
         ]
         if topic:
@@ -716,7 +771,7 @@ class PickerApp(App):
         if self._filtered_sessions:
             ages = _get_all_session_ages()
             for session in self._filtered_sessions:
-                lv.append(_make_item(session, self._topics, ages))
+                lv.append(_make_item(session, self._topics, ages, self._current_session))
             # Defer index setting so the DOM has the new items first
             self.call_after_refresh(self._ensure_list_selection, 0)
         else:
@@ -861,7 +916,18 @@ class PickerApp(App):
         if idx is not None and 0 <= idx < len(self._filtered_sessions):
             self._jump_to_session(self._filtered_sessions[idx])
 
+    def _is_command_palette_open(self) -> bool:
+        """Check if the command palette is currently open."""
+        from textual.command import CommandPalette
+        try:
+            return any(isinstance(s, CommandPalette) for s in self.screen_stack)
+        except Exception:
+            return False
+
     def on_key(self, event) -> None:
+        # Don't handle keys when command palette is open
+        if self._is_command_palette_open():
+            return
         # Global keys (work in both views)
         if self._help_visible:
             # Any key dismisses help
@@ -880,6 +946,10 @@ class PickerApp(App):
             self._quick_approve()
             event.prevent_default()
             event.stop()
+        elif event.key == "ctrl+a":
+            self._quick_approve_always()
+            event.prevent_default()
+            event.stop()
         elif event.key == "ctrl+w":
             self._kill_agent_pane()
             event.prevent_default()
@@ -894,6 +964,10 @@ class PickerApp(App):
             event.stop()
         elif event.key == "ctrl+n":
             self._new_session()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "ctrl+r":
+            self._quick_prototype()
             event.prevent_default()
             event.stop()
         elif event.key == "ctrl+e":
@@ -978,6 +1052,20 @@ class PickerApp(App):
         except Exception:
             logger.exception("quick approve failed for %s", session.name)
 
+    def _quick_approve_always(self) -> None:
+        """Send Down + Enter to select 'Allow always' if session needs input."""
+        session = self._get_highlighted_session()
+        if session is None:
+            return
+        if session.status != SessionStatus.WAITING_INPUT:
+            return
+        target = f"{session.name}:{session.window_index}.{session.pane_index}"
+        try:
+            run_tmux("send-keys", "-t", target, "Down", "Enter")
+            logger.info("quick approve always sent to %s", session.name)
+        except Exception:
+            logger.exception("quick approve always failed for %s", session.name)
+
     def _kill_agent_pane(self) -> None:
         """Kill just the agent pane, leave the tmux session alive."""
         session = self._get_highlighted_session()
@@ -1055,6 +1143,10 @@ class PickerApp(App):
         """Exit picker with a signal to open the new-session form."""
         self.exit(result="new_session")
 
+    def _quick_prototype(self) -> None:
+        """Exit picker with a signal to open the quick prototype form."""
+        self.exit(result="quick_prototype")
+
     def _open_config(self) -> None:
         """Ensure config has all sections, then open in editor."""
         import subprocess as sp
@@ -1104,8 +1196,8 @@ class PickerApp(App):
         else:
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
-            f"[#7aa2f7][b]Ctrl+n[/b] New[/]  [b]F1[/b] Help  [b]Tab[/b] View  {nav}  [b]Enter[/b] Jump"
-            f"  [#00D26A][b]Ctrl+y[/b] Approve[/]  [#db4b4b][b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session[/]"
+            f"[#7aa2f7][b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]  [b]F1[/b] Help  [b]Tab[/b] View  {nav}  [b]Enter[/b] Jump"
+            f"  [#00D26A][b]Ctrl+y[/b] Allow[/]  [#00D26A][b]Ctrl+a[/b] Allow always[/]  [#db4b4b][b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session[/]"
             f"  [b]Ctrl+s[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
             f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
@@ -1117,3 +1209,4 @@ class PickerApp(App):
         self.theme = name
         save_theme(name)
         self._update_hint_bar()
+
