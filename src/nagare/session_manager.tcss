@@ -1,0 +1,53 @@
+Screen {
+    layout: vertical;
+    padding: 1 2;
+}
+
+#title-bar {
+    dock: top;
+    height: 1;
+    padding: 0 1;
+    color: $primary;
+    margin: 0 0 1 0;
+}
+
+#search {
+    dock: top;
+    border: none;
+    height: 1;
+    margin: 0 0 1 0;
+}
+
+#session-list {
+    height: 1fr;
+    background: $background;
+}
+
+.session-item {
+    height: auto;
+    padding: 0;
+}
+
+ListItem {
+    background: $background;
+    height: auto;
+    padding: 1 1 0 1;
+}
+
+ListItem.-highlight {
+    background: $panel;
+    border-left: thick $primary;
+}
+
+#session-list:focus ListItem.-highlight {
+    background: $panel;
+    border-left: thick $primary;
+}
+
+#hint-bar {
+    dock: bottom;
+    height: 1;
+    background: $surface;
+    color: $text-muted;
+    padding: 0 1;
+}

@@ -81,11 +81,13 @@ ListItem {
 
 ListItem.-highlight {
     background: $panel;
-    border-left: thick $primary;
 }
 
 #session-list:focus ListItem.-highlight {
     background: $panel;
+}
+
+.current-session {
     border-left: thick $primary;
 }
 

@@ -26,6 +26,12 @@ def main() -> None:
                 if form_result == "back_to_picker":
                     continue
                 break
+            elif result == "session_manager":
+                from nagare.session_manager import SessionManagerApp
+                form_result = SessionManagerApp().run()
+                if form_result == "back_to_picker":
+                    continue
+                break
             else:
                 break
     elif command == "notifs":

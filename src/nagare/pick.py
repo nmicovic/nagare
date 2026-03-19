@@ -53,6 +53,7 @@ _HELP_TEXT = """\
   [b]Enter[/b]        Jump to selected session
   [b]Ctrl+y[/b]       Allow (NEEDS INPUT sessions only)
   [b]Ctrl+a[/b]       Allow always (NEEDS INPUT sessions only)
+  [b]Ctrl+s[/b]       Session manager (load/unload)
   [b]Ctrl+n[/b]       New session
   [b]Ctrl+r[/b]       Quick prototype
   [b]Ctrl+w[/b]       Kill agent pane
@@ -61,7 +62,7 @@ _HELP_TEXT = """\
 
 [b]Views[/b]
   [b]Tab[/b]          Toggle list / grid view
-  [b]Ctrl+s[/b]       Cycle sort: status → name → agent
+  [b]Ctrl+o[/b]       Cycle sort: status → name → agent
 
 [b]Settings[/b]
   [b]Ctrl+e[/b]       Open config in editor
@@ -335,8 +336,9 @@ class NagareCommands(Provider):
         return [
         ("New Session", "Create a new tmux session with an agent (Ctrl+n)", "_new_session"),
         ("Quick Prototype", f"Fast prototype in {quick_path} (Ctrl+r)", "_quick_prototype"),
+        ("Session Manager", "Load/unload registered sessions (Ctrl+s)", "_session_manager"),
         ("Toggle Grid View", "Switch between list and grid (Tab)", "_toggle_view"),
-        ("Cycle Sort", "Cycle sort: status → name → agent (Ctrl+s)", "_cycle_sort"),
+        ("Cycle Sort", "Cycle sort: status → name → agent (Ctrl+o)", "_cycle_sort"),
         ("Cycle Theme", "Change color theme (Ctrl+t)", "_cycle_theme"),
         ("Open Config", "Edit config file in editor (Ctrl+e)", "_open_config"),
         ("Help", "Show keyboard shortcuts (F1)", "_toggle_help"),
@@ -444,6 +446,15 @@ class PickerApp(App):
         self.call_after_refresh(self._deferred_init)
 
     def _deferred_init(self) -> None:
+        # Auto-register any new sessions we discovered
+        try:
+            from nagare.registry import SessionRegistry
+            registry = SessionRegistry()
+            for s in self._sessions:
+                if not registry.find(s.name):
+                    registry.register(s.name, s.path, s.agent_type.value)
+        except Exception:
+            pass
         self._update_dashboard()
         session = self._get_highlighted_session()
         if session is not None:
@@ -933,7 +944,8 @@ class PickerApp(App):
         "ctrl+a": "_quick_approve_always",
         "ctrl+w": "_kill_agent_pane",
         "ctrl+x": "_kill_tmux_session",
-        "ctrl+s": "_cycle_sort",
+        "ctrl+o": "_cycle_sort",
+        "ctrl+s": "_session_manager",
         "ctrl+n": "_new_session",
         "ctrl+r": "_quick_prototype",
         "ctrl+e": "_open_config",
@@ -1108,6 +1120,10 @@ class PickerApp(App):
         """Exit picker with a signal to open the quick prototype form."""
         self.exit(result="quick_prototype")
 
+    def _session_manager(self) -> None:
+        """Exit picker with a signal to open the session manager."""
+        self.exit(result="session_manager")
+
     def _open_config(self) -> None:
         """Ensure config has all sections, then open in editor."""
         import subprocess as sp
@@ -1157,9 +1173,9 @@ class PickerApp(App):
         else:
             nav = "[b]↑/↓/←/→[/b] Navigate"
         self.query_one("#hint-bar", Static).update(
-            f"[#7aa2f7][b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]  [b]F1[/b] Help  [b]Tab[/b] View  {nav}  [b]Enter[/b] Jump"
+            f"[#7aa2f7][b]Ctrl+s[/b] Sessions  [b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]  [b]F1[/b] Help  [b]Tab[/b] View  {nav}  [b]Enter[/b] Jump"
             f"  [#00D26A][b]Ctrl+y[/b] Allow[/]  [#00D26A][b]Ctrl+a[/b] Allow always[/]  [#db4b4b][b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session[/]"
-            f"  [b]Ctrl+s[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
+            f"  [b]Ctrl+o[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
             f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
