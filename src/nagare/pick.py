@@ -485,6 +485,12 @@ class PickerApp(App):
                     registry.register(s.name, s.path, s.agent_type.value)
         except Exception:
             pass
+        # Ensure popup watcher is running for overlay notifications
+        try:
+            from nagare.notifications.deliver import start_popup_watcher
+            start_popup_watcher()
+        except Exception:
+            pass
         self._update_dashboard()
         session = self._get_highlighted_session()
         if session is not None:
@@ -1371,13 +1377,19 @@ class PickerApp(App):
             nav = "[b]↑/↓/←/→[/b] Navigate"
 
         hint = self.query_one("#hint-bar", Static)
-        hint.update(
-            f"[#7aa2f7][b]Ctrl+s[/b] Sessions  [b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]  [b]F1[/b] Help  [b]Tab[/b] View  {nav}  [b]Enter[/b] Jump"
-            f"  [#00D26A][b]Ctrl+y[/b] Allow[/]  [#00D26A][b]Ctrl+a[/b] Allow always[/]  [#db4b4b][b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session[/]"
+        row1 = (
+            f" [b]Enter[/b] Jump  {nav}  [b]Tab[/b] View  [b]F2[/b] Rename"
+            f"  [#00D26A][b]Ctrl+y[/b] Allow  [b]Ctrl+a[/b] Always[/]"
+            f"  [#db4b4b][b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session[/]"
+        )
+        row2 = (
+            f" [#7aa2f7][b]Ctrl+s[/b] Sessions  [b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]"
             f"  [b]Ctrl+o[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
-            f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Esc[/b] Cancel"
+            f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Ctrl+p[/b] Commands"
+            f"  [b]F1[/b] Help  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
+        hint.update(f"{row1}\n{row2}")
 
     def _cycle_theme(self) -> None:
         self._theme_index = (self._theme_index + 1) % len(self._theme_names)

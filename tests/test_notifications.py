@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from nagare.notifications.deliver import (
@@ -72,20 +74,50 @@ def test_detect_nothing_available(mock_which):
     assert result is None
 
 
+@patch("nagare.notifications.deliver.POPUP_FIFO", Path("/nonexistent/fifo"))
 @patch("nagare.notifications.deliver._get_client_name", return_value="/dev/pts/0")
 @patch("nagare.notifications.deliver._find_nagare_bin", return_value="/usr/local/bin/nagare")
 @patch("nagare.notifications.deliver.subprocess.Popen")
-def test_send_popup(mock_popen, mock_find, mock_client):
+def test_send_popup_fallback(mock_popen, mock_find, mock_client):
+    """When FIFO doesn't exist, falls back to direct Popen."""
     send_popup("my-project", "waiting_for_input", "Needs attention", working_seconds=120, popup_timeout=15)
     mock_popen.assert_called_once()
     args = mock_popen.call_args[0][0]
     assert args[0] == "tmux"
     assert "display-popup" in args
-    assert "-t" in args
-    assert "/dev/pts/0" in args
     assert "-E" in args
     cmd_str = args[-1]
     assert "popup-notif" in cmd_str
-    assert "--session" in cmd_str
     assert "my-project" in cmd_str
     assert "--duration" in cmd_str
+
+
+def test_send_popup_fifo(tmp_path):
+    """When FIFO exists, writes command to it."""
+    fifo_path = tmp_path / "popup.fifo"
+    os.mkfifo(str(fifo_path))
+
+    import threading
+
+    # Reader thread (simulates watcher)
+    received = []
+    def reader():
+        with open(fifo_path) as f:
+            for line in f:
+                received.append(line.strip())
+
+    t = threading.Thread(target=reader, daemon=True)
+    t.start()
+
+    with patch("nagare.notifications.deliver.POPUP_FIFO", fifo_path), \
+         patch("nagare.notifications.deliver._find_nagare_bin", return_value="/usr/bin/nagare"):
+        send_popup("test-proj", "needs_input", "test msg", popup_timeout=5)
+
+    # Close the FIFO to unblock reader
+    with open(fifo_path, "w") as f:
+        pass
+    t.join(timeout=2)
+
+    assert len(received) == 1
+    assert "display-popup" in received[0]
+    assert "test-proj" in received[0]

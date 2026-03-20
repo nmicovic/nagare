@@ -75,6 +75,9 @@ def main() -> None:
             from nagare.new_session import NewSessionApp
             app = NewSessionApp()
             app.run()
+    elif command == "popup-watcher":
+        from nagare.notifications.deliver import run_popup_watcher
+        run_popup_watcher()
     elif command == "popup-dispatch":
         # Legacy — kept for compatibility but no longer used
         pass

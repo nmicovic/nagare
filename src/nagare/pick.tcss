@@ -94,21 +94,29 @@ Screen {
 }
 
 ListItem {
-    background: $background;
-    padding: 1 1 1 1;
-    margin: 0 0 1 0;
+    background: $surface;
+    padding: 0 1 0 1;
+    margin: 0 1 1 1;
+    border: solid $panel;
 }
 
 ListItem.-highlight {
     background: $panel;
+    border: solid $accent;
 }
 
 #session-list:focus ListItem.-highlight {
     background: $panel;
+    border: solid $accent;
 }
 
 .current-session {
-    border-left: thick $primary;
+    border: solid $primary;
+}
+
+.current-session.-highlight {
+    background: $panel;
+    border: solid $accent;
 }
 
 /* ── Grid view ── */
@@ -198,7 +206,7 @@ ListItem.-highlight {
 
 #hint-bar {
     dock: bottom;
-    height: 1;
+    height: 2;
     background: $surface;
     color: $text-muted;
     padding: 0 1;
