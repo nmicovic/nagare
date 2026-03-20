@@ -37,7 +37,7 @@ Screen {
 
 #dashboard {
     height: auto;
-    max-height: 6;
+    max-height: 8;
     background: $surface;
     border-top: solid $primary;
     padding: 1 1;

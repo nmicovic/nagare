@@ -228,6 +228,15 @@ def _get_session_details(session: Session) -> str:
             parts.append(f"  📐 Pane size: {dims}")
     except Exception:
         pass
+    # Token usage for this session
+    try:
+        from nagare.tokens import get_session_tokens
+        usage = get_session_tokens(session.path)
+        if usage.total > 0:
+            parts.append(f"  🪙 Tokens: {usage.display}")
+    except Exception:
+        pass
+
     return "\n".join(parts) if parts else "[dim]No details available[/dim]"
 
 
@@ -280,6 +289,18 @@ def _get_dashboard_stats(sessions: list[Session]) -> str:
             tmux_age = uptime_s - (start_ticks / hz)
             if tmux_age > 0:
                 parts.append(f"  🖥  tmux uptime: {_human_duration(tmux_age)}")
+    except Exception:
+        pass
+
+    # Token usage across all sessions
+    try:
+        from nagare.tokens import get_all_session_tokens, _format_tokens
+        paths = list(set(s.path for s in sessions))
+        tokens = get_all_session_tokens(paths)
+        total_tokens = sum(u.total for u in tokens.values())
+        total_output = sum(u.output_tokens for u in tokens.values())
+        if total_tokens > 0:
+            parts.append(f"  🪙 Tokens: {_format_tokens(total_tokens)} ({_format_tokens(total_output)} out)")
     except Exception:
         pass
     return "\n".join(parts)
