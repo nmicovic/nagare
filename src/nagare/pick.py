@@ -57,6 +57,7 @@ _HELP_TEXT = """\
   [b]Ctrl+s[/b]       Session manager (load/unload)
   [b]Ctrl+n[/b]       New session
   [b]Ctrl+r[/b]       Quick prototype
+  [b]F2[/b]            Rename session
   [b]Ctrl+w[/b]       Kill agent pane
   [b]Ctrl+x[/b]       Kill entire tmux session
   [b]Esc[/b]          Close picker
@@ -99,14 +100,15 @@ def _get_all_session_ages() -> dict[str, str]:
         return {}
 
 
-def _format_line1(session: Session, ages: dict[str, str] | None = None, current: bool = False) -> str:
+def _format_line1(session: Session, ages: dict[str, str] | None = None, current: bool = False, show_window: bool = False) -> str:
     icon = session.status_icon
     agent = session.agent_icon
     label = _STATUS_LABEL.get(session.status, "")
     age = (ages or {}).get(session.name, "")
     age_str = f"  [dim]⏱ {age}[/dim]" if age else ""
     here = "  [#7aa2f7]◄ you[/]" if current else ""
-    return f"{icon}  {agent} [b]{session.name}[/b]{here}  {label}{age_str}"
+    window = f"[dim]:{session.window_index}[/dim]" if show_window else ""
+    return f"{icon}  {agent} [b]{session.name}[/b]{window}{here}  {label}{age_str}"
 
 
 def _format_line2(session: Session) -> str:
@@ -135,10 +137,11 @@ def _format_topic(session: Session, topics: dict[str, str]) -> str:
     return f"    [dim italic]💬 {topic}[/dim italic]"
 
 
-def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | None = None, current_session: str = "") -> ListItem:
+def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | None = None, current_session: str = "", name_counts: dict[str, int] | None = None) -> ListItem:
     is_current = session.name == current_session
+    show_window = (name_counts or {}).get(session.name, 0) > 1
     children = [
-        Static(_format_line1(session, ages, current=is_current)),
+        Static(_format_line1(session, ages, current=is_current, show_window=show_window)),
         Static(_format_line2(session)),
         Static(_format_line3(session)),
     ]
@@ -345,6 +348,7 @@ class NagareCommands(Provider):
         ("Help", "Show keyboard shortcuts (F1)", "_toggle_help"),
         ("Allow", "Send allow to NEEDS INPUT session (Ctrl+y)", "_quick_approve"),
         ("Allow Always", "Send allow-always to NEEDS INPUT session (Ctrl+a)", "_quick_approve_always"),
+        ("Rename Session", "Rename the selected session (F2)", "_rename_session"),
         ("Kill Agent Pane", "Kill the selected agent pane (Ctrl+w)", "_kill_agent_pane"),
         ("Kill Session", "Kill the entire tmux session (Ctrl+x)", "_kill_tmux_session"),
         ]
@@ -390,6 +394,8 @@ class PickerApp(App):
         self._theme_index = 0
         self._preview_session: Session | None = None
         self._anim_config = AnimationConfig()
+        self._rename_mode = False
+        self._renaming_session: Session | None = None
         self._sort_mode = "status"
         self._help_visible = False
         self._view_mode = "list"  # "list" or "grid"
@@ -826,15 +832,20 @@ class PickerApp(App):
             logger.exception("on_app_focus failed")
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        self._apply_filter()
+        if not self._rename_mode:
+            self._apply_filter()
 
     def _rebuild_list(self) -> None:
         lv = self.query_one("#session-list", ListView)
         lv.clear()
         if self._filtered_sessions:
             ages = _get_all_session_ages()
+            # Count how many agents share each session name
+            name_counts: dict[str, int] = {}
+            for s in self._filtered_sessions:
+                name_counts[s.name] = name_counts.get(s.name, 0) + 1
             for session in self._filtered_sessions:
-                lv.append(_make_item(session, self._topics, ages, self._current_session))
+                lv.append(_make_item(session, self._topics, ages, self._current_session, name_counts))
             # Defer index setting so the DOM has the new items first
             self.call_after_refresh(self._ensure_list_selection, 0)
         else:
@@ -999,11 +1010,26 @@ class PickerApp(App):
         "ctrl+n": "_new_session",
         "ctrl+r": "_quick_prototype",
         "ctrl+e": "_open_config",
+        "f2": "_rename_session",
     }
 
     def on_key(self, event) -> None:
         # Don't handle keys when command palette is open
         if self._is_command_palette_open():
+            return
+        # Handle rename mode
+        if self._rename_mode:
+            if event.key == "enter":
+                self._finish_rename()
+                event.prevent_default()
+                event.stop()
+            elif event.key == "escape":
+                self._rename_mode = False
+                self._renaming_session = None
+                self.query_one("#search", Input).value = ""
+                self._update_title_bar()
+                event.prevent_default()
+                event.stop()
             return
         # Any key dismisses help
         if self._help_visible:
@@ -1169,6 +1195,70 @@ class PickerApp(App):
     def _quick_prototype(self) -> None:
         """Exit picker with a signal to open the quick prototype form."""
         self.exit(result="quick_prototype")
+
+    def _rename_session(self) -> None:
+        """Start renaming the selected session."""
+        session = self._get_highlighted_session()
+        if session is None:
+            return
+        self._renaming_session = session
+        # Show rename input in the title bar area
+        self.query_one("#title-bar", Static).update(
+            f"  Rename [b]{session.name}[/b] to: "
+        )
+        search = self.query_one("#search", Input)
+        search.value = session.name
+        search.select_all()
+        search.focus()
+        self._rename_mode = True
+
+    def _finish_rename(self) -> None:
+        """Complete the rename operation."""
+        search = self.query_one("#search", Input)
+        new_name = search.value.strip()
+        session = self._renaming_session
+        self._rename_mode = False
+        self._renaming_session = None
+        search.value = ""
+
+        if not new_name or not session or new_name == session.name:
+            self._update_title_bar()
+            return
+
+        old_name = session.name
+        try:
+            # Check if this session has multiple agents — if so, rename
+            # the window instead of the whole tmux session
+            sibling_count = sum(
+                1 for s in self._sessions if s.name == old_name
+            )
+            if sibling_count > 1:
+                # Rename the tmux window
+                target = f"{old_name}:{session.window_index}"
+                run_tmux("rename-window", "-t", target, new_name)
+                logger.info("renamed tmux window %s -> %s", target, new_name)
+            else:
+                # Rename the tmux session
+                run_tmux("rename-session", "-t", old_name, new_name)
+                logger.info("renamed tmux session %s -> %s", old_name, new_name)
+
+                # Update registry
+                from nagare.registry import SessionRegistry
+                reg = SessionRegistry()
+                existing = reg.find(old_name)
+                if existing:
+                    reg.remove(old_name)
+                    reg.register(new_name, existing.path, existing.agent)
+
+                # Update current session tracker if we renamed our own session
+                if self._current_session == old_name:
+                    self._current_session = new_name
+
+            self._refresh_sessions()
+        except Exception:
+            logger.exception("rename failed: %s -> %s", old_name, new_name)
+
+        self._update_title_bar()
 
     def _session_manager(self) -> None:
         """Exit picker with a signal to open the session manager."""
