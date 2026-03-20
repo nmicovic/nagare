@@ -84,6 +84,7 @@ class SessionManagerApp(App):
         super().__init__()
         self._reg = SessionRegistry()
         self._filtered: list[RegisteredSession] = []
+        self._recently_loaded: set[str] = set()  # Track sessions we just loaded
 
     def compose(self) -> ComposeResult:
         yield Static("[b]Session Manager[/b]", id="title-bar")
@@ -130,7 +131,7 @@ class SessionManagerApp(App):
 
         if self._filtered:
             for s in self._filtered:
-                loaded = _is_session_loaded(s.name)
+                loaded = _is_session_loaded(s.name) or s.name in self._recently_loaded
                 lines = _format_session_lines(s, loaded)
                 item = ListItem(
                     Vertical(*[Static(l) for l in lines], classes="session-item"),
@@ -177,6 +178,7 @@ class SessionManagerApp(App):
 
         if loaded:
             _unload_session(s.name)
+            self._recently_loaded.discard(s.name)
             logger.info("unloaded session %s", s.name)
         else:
             try:
@@ -186,6 +188,7 @@ class SessionManagerApp(App):
                     agent=s.agent,
                     continue_session=True,
                 )
+                self._recently_loaded.add(s.name)
                 self._reg.touch(s.name)
                 logger.info("loaded session %s", s.name)
             except (ValueError, RuntimeError) as e:
