@@ -15,19 +15,23 @@ from nagare.themes import THEMES
 from nagare.tmux import run_tmux
 
 
+def _get_loaded_sessions() -> set[str]:
+    """Get all session names that have agents running — single tmux call."""
+    try:
+        raw = run_tmux("list-panes", "-a", "-F", "#{session_name}:#{pane_current_command}")
+        loaded = set()
+        for line in raw.splitlines():
+            parts = line.split(":", 1)
+            if len(parts) == 2 and parts[1].strip() in ("claude", "opencode"):
+                loaded.add(parts[0])
+        return loaded
+    except Exception:
+        return set()
+
+
 def _is_session_loaded(name: str) -> bool:
     """Check if a tmux session with this name has an agent running."""
-    try:
-        panes = run_tmux(
-            "list-panes", "-s", "-t", name,
-            "-F", "#{pane_current_command}",
-        )
-        for cmd in panes.splitlines():
-            if cmd.strip() in ("claude", "opencode"):
-                return True
-        return False
-    except Exception:
-        return False
+    return name in _get_loaded_sessions()
 
 
 def _unload_session(name: str) -> None:
@@ -130,8 +134,9 @@ class SessionManagerApp(App):
         lv.clear()
 
         if self._filtered:
+            loaded_set = _get_loaded_sessions()
             for s in self._filtered:
-                loaded = _is_session_loaded(s.name) or s.name in self._recently_loaded
+                loaded = s.name in loaded_set or s.name in self._recently_loaded
                 lines = _format_session_lines(s, loaded)
                 item = ListItem(
                     Vertical(*[Static(l) for l in lines], classes="session-item"),

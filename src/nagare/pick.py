@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import time
@@ -459,7 +460,7 @@ class PickerApp(App):
         session = self._get_highlighted_session()
         if session is not None:
             self._update_preview(session)
-        self.set_interval(2, self._poll_state)
+        self._state_timer = self.set_interval(2, self._poll_state)
         self._list_timer = self.set_interval(1, self._poll_preview)
 
     def _select_current_session(self) -> None:
@@ -505,54 +506,60 @@ class PickerApp(App):
 
         self._update_title_bar()
 
-    def _poll_state(self) -> None:
-        highlighted = self._get_highlighted_session()
-        highlighted_name = highlighted.name if highlighted else None
+    async def _poll_state(self) -> None:
+        try:
+            highlighted = self._get_highlighted_session()
+            highlighted_name = highlighted.name if highlighted else None
 
-        old_snapshot = {s.name: s.status for s in self._sessions}
-        self._sessions = _sort_sessions(scan_sessions(), self._sort_mode)
-        new_snapshot = {s.name: s.status for s in self._sessions}
-        if old_snapshot != new_snapshot:
-            self._apply_filter()
-            # Restore selection by name, fall back to 0
-            restored = False
-            if highlighted_name:
-                for i, s in enumerate(self._filtered_sessions):
-                    if s.name == highlighted_name:
-                        if self._view_mode == "list":
-                            self.query_one("#session-list", ListView).index = i
-                        else:
-                            self._grid_selected = i
-                            self._update_grid_selection()
-                        restored = True
-                        break
-            if not restored and self._filtered_sessions:
-                if self._view_mode == "list":
-                    self.query_one("#session-list", ListView).index = 0
-                else:
-                    self._grid_selected = 0
-                    self._update_grid_selection()
+            old_snapshot = {s.name: s.status for s in self._sessions}
+            new_sessions = await asyncio.to_thread(
+                lambda: _sort_sessions(scan_sessions(), self._sort_mode)
+            )
+            new_snapshot = {s.name: s.status for s in new_sessions}
+            self._sessions = new_sessions
+            if old_snapshot != new_snapshot:
+                self._apply_filter()
+                # Restore selection by name, fall back to 0
+                restored = False
+                if highlighted_name:
+                    for i, s in enumerate(self._filtered_sessions):
+                        if s.name == highlighted_name:
+                            if self._view_mode == "list":
+                                self.query_one("#session-list", ListView).index = i
+                            else:
+                                self._grid_selected = i
+                                self._update_grid_selection()
+                            restored = True
+                            break
+                if not restored and self._filtered_sessions:
+                    if self._view_mode == "list":
+                        self.query_one("#session-list", ListView).index = 0
+                    else:
+                        self._grid_selected = 0
+                        self._update_grid_selection()
 
-        # Ensure list view always has a valid selection
-        if self._view_mode == "list" and self._filtered_sessions:
-            lv = self.query_one("#session-list", ListView)
-            if lv.index is None:
-                lv.index = 0
+            # Ensure list view always has a valid selection
+            if self._view_mode == "list" and self._filtered_sessions:
+                lv = self.query_one("#session-list", ListView)
+                if lv.index is None:
+                    lv.index = 0
 
-        if self._view_mode == "list":
-            self._update_dashboard()
+            if self._view_mode == "list":
+                self._update_dashboard()
+        except Exception:
+            logger.exception("poll_state failed")
 
-    def _poll_preview(self) -> None:
+    async def _poll_preview(self) -> None:
         if self._view_mode != "list":
             return
         session = self._get_highlighted_session()
         if session is not None:
-            self._update_preview(session)
+            await self._update_preview_async(session)
 
-    def _poll_grid(self) -> None:
+    async def _poll_grid(self) -> None:
         if self._view_mode != "grid":
             return
-        self._update_grid_previews()
+        await self._update_grid_previews_async()
 
     def _get_highlighted_session(self) -> Session | None:
         if self._view_mode == "list":
@@ -566,6 +573,7 @@ class PickerApp(App):
         return None
 
     def _update_preview(self, session: Session) -> None:
+        """Sync preview update — blocks on tmux calls. Used for immediate UI feedback."""
         self._preview_session = session
         label = _STATUS_LABEL.get(session.status, "")
         header = f"{session.status_icon}  [b]{session.name}[/b]  {label}\n"
@@ -573,6 +581,25 @@ class PickerApp(App):
         self.query_one("#session-details", Static).update(header + details)
 
         content = _capture_pane(session)
+        self._apply_preview_content(content)
+
+    async def _update_preview_async(self, session: Session) -> None:
+        """Async preview update — offloads tmux calls to a thread."""
+        try:
+            self._preview_session = session
+            label = _STATUS_LABEL.get(session.status, "")
+            header = f"{session.status_icon}  [b]{session.name}[/b]  {label}\n"
+            details, content = await asyncio.to_thread(
+                lambda: (_get_session_details(session), _capture_pane(session))
+            )
+            # UI updates on main thread
+            self.query_one("#session-details", Static).update(header + details)
+            self._apply_preview_content(content)
+        except Exception:
+            logger.exception("update_preview_async failed")
+
+    def _apply_preview_content(self, content: str) -> None:
+        """Apply captured pane content to the preview widget."""
         lines = content.rstrip("\n").split("\n")
         while lines and not lines[0].strip():
             lines.pop(0)
@@ -664,15 +691,31 @@ class PickerApp(App):
         return cell
 
     def _update_grid_previews(self) -> None:
-        """Update all grid cell pane captures."""
+        """Update all grid cell pane captures (sync — used for immediate refresh)."""
+        self._apply_grid_previews(
+            [(i, _capture_pane(s)) for i, s in enumerate(self._filtered_sessions)]
+        )
+
+    async def _update_grid_previews_async(self) -> None:
+        """Update all grid cell pane captures (async — offloads tmux to thread)."""
+        try:
+            sessions = list(enumerate(self._filtered_sessions))
+            captures = await asyncio.to_thread(
+                lambda: [(i, _capture_pane(s)) for i, s in sessions]
+            )
+            self._apply_grid_previews(captures)
+        except Exception:
+            logger.exception("update_grid_previews_async failed")
+
+    def _apply_grid_previews(self, captures: list[tuple[int, str]]) -> None:
+        """Apply captured pane contents to grid preview widgets."""
         gen = self._grid_generation
-        for i, session in enumerate(self._filtered_sessions):
+        for i, content in captures:
             try:
                 preview_widget = self.query_one(f"#cell-preview-{gen}-{i}", Static)
             except Exception:
                 continue
 
-            content = _capture_pane(session)
             lines = content.rstrip("\n").split("\n")
             while lines and not lines[0].strip():
                 lines.pop(0)
@@ -765,15 +808,22 @@ class PickerApp(App):
 
     # ── Events ──
 
-    def on_app_focus(self, event) -> None:
+    async def on_app_focus(self, event) -> None:
         """Refresh all data immediately when the picker regains focus."""
-        self._refresh_sessions()
-        if self._view_mode == "grid":
-            self._update_grid_previews()
-        else:
-            session = self._get_highlighted_session()
-            if session is not None:
-                self._update_preview(session)
+        try:
+            new_sessions = await asyncio.to_thread(
+                lambda: _sort_sessions(scan_sessions(), self._sort_mode)
+            )
+            self._sessions = new_sessions
+            self._apply_filter()
+            if self._view_mode == "grid":
+                await self._update_grid_previews_async()
+            else:
+                session = self._get_highlighted_session()
+                if session is not None:
+                    await self._update_preview_async(session)
+        except Exception:
+            logger.exception("on_app_focus failed")
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self._apply_filter()
