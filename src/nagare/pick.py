@@ -14,7 +14,7 @@ from textual.binding import Binding
 from textual.command import Provider, Hits, Hit, DiscoveryHit
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.timer import Timer
-from textual.widgets import Input, ListView, ListItem, Static
+from textual.widgets import Input, ListView, ListItem, ProgressBar, Rule, Static
 
 from nagare.config import AnimationConfig, load_config, save_theme
 from nagare.log import logger
@@ -415,6 +415,8 @@ class PickerApp(App):
                 yield Static(id="dashboard")
             with Vertical(id="right-panel"):
                 yield Static(id="session-details")
+                yield ProgressBar(total=100, show_eta=False, show_percentage=True, id="ctx-progress")
+                yield Rule(id="detail-rule")
                 with VerticalScroll(id="preview-scroll"):
                     yield Static(id="preview-content")
         # Grid view (hidden initially)
@@ -580,6 +582,7 @@ class PickerApp(App):
 
     def _update_preview(self, session: Session) -> None:
         """Sync preview update — blocks on tmux calls. Used for immediate UI feedback."""
+        from nagare.tmux.status import parse_details as _parse_details
         self._preview_session = session
         label = _STATUS_LABEL.get(session.status, "")
         header = f"{session.status_icon}  [b]{session.name}[/b]  {label}\n"
@@ -587,11 +590,15 @@ class PickerApp(App):
         self.query_one("#session-details", Static).update(header + details)
 
         content = _capture_pane(session)
+        # Parse context usage from the pane content
+        pane_details = _parse_details(content)
+        self._update_context_progress(pane_details.context_usage)
         self._apply_preview_content(content)
 
     async def _update_preview_async(self, session: Session) -> None:
         """Async preview update — offloads tmux calls to a thread."""
         try:
+            from nagare.tmux.status import parse_details as _parse_details
             self._preview_session = session
             label = _STATUS_LABEL.get(session.status, "")
             header = f"{session.status_icon}  [b]{session.name}[/b]  {label}\n"
@@ -600,9 +607,28 @@ class PickerApp(App):
             )
             # UI updates on main thread
             self.query_one("#session-details", Static).update(header + details)
+            pane_details = _parse_details(content)
+            self._update_context_progress(pane_details.context_usage)
             self._apply_preview_content(content)
         except Exception:
             logger.exception("update_preview_async failed")
+
+    def _update_context_progress(self, ctx: str = "") -> None:
+        """Update the context usage progress bar.
+
+        Args:
+            ctx: Context string like "17%" from the pane status bar.
+        """
+        try:
+            progress = self.query_one("#ctx-progress", ProgressBar)
+            if ctx:
+                value = int(ctx.replace("%", ""))
+                progress.update(progress=value)
+                progress.display = True
+            else:
+                progress.display = False
+        except Exception:
+            pass
 
     def _apply_preview_content(self, content: str) -> None:
         """Apply captured pane content to the preview widget."""
@@ -1118,6 +1144,7 @@ class PickerApp(App):
         try:
             run_tmux("send-keys", "-t", target, "Enter")
             logger.info("quick approve sent to %s", session.name)
+            self.notify(f"Allowed {session.name}", severity="information")
         except Exception:
             logger.exception("quick approve failed for %s", session.name)
 
@@ -1132,6 +1159,7 @@ class PickerApp(App):
         try:
             run_tmux("send-keys", "-t", target, "Down", "Enter")
             logger.info("quick approve always sent to %s", session.name)
+            self.notify(f"Always allowed {session.name}", severity="information")
         except Exception:
             logger.exception("quick approve always failed for %s", session.name)
 
@@ -1145,6 +1173,7 @@ class PickerApp(App):
             mark_path_dead(session.path)
             run_tmux("kill-pane", "-t", target)
             logger.info("killed agent pane %s", target)
+            self.notify(f"Killed agent in {session.name}", severity="warning")
         except Exception:
             logger.exception("kill pane failed for %s", target)
         self._refresh_sessions()
@@ -1159,6 +1188,7 @@ class PickerApp(App):
             mark_path_dead(session.path)
             run_tmux("kill-session", "-t", name)
             logger.info("killed tmux session %s", name)
+            self.notify(f"Killed session {name}", severity="warning")
         except Exception:
             logger.exception("kill session failed for %s", name)
         self._refresh_sessions()
@@ -1227,22 +1257,27 @@ class PickerApp(App):
 
         old_name = session.name
         try:
+            # Check if target name already exists
+            existing_sessions = set(run_tmux("list-sessions", "-F", "#{session_name}").splitlines())
+            if new_name in existing_sessions:
+                self.notify(f"Session '{new_name}' already exists", severity="error")
+                return
+
             # Check if this session has multiple agents — if so, rename
             # the window instead of the whole tmux session
             sibling_count = sum(
                 1 for s in self._sessions if s.name == old_name
             )
             if sibling_count > 1:
-                # Rename the tmux window
                 target = f"{old_name}:{session.window_index}"
                 run_tmux("rename-window", "-t", target, new_name)
                 logger.info("renamed tmux window %s -> %s", target, new_name)
+                self.notify(f"Renamed window → {new_name}", severity="information")
             else:
-                # Rename the tmux session
                 run_tmux("rename-session", "-t", old_name, new_name)
                 logger.info("renamed tmux session %s -> %s", old_name, new_name)
+                self.notify(f"Renamed {old_name} → {new_name}", severity="information")
 
-                # Update registry
                 from nagare.registry import SessionRegistry
                 reg = SessionRegistry()
                 existing = reg.find(old_name)
@@ -1250,13 +1285,14 @@ class PickerApp(App):
                     reg.remove(old_name)
                     reg.register(new_name, existing.path, existing.agent)
 
-                # Update current session tracker if we renamed our own session
                 if self._current_session == old_name:
                     self._current_session = new_name
 
             self._refresh_sessions()
         except Exception:
             logger.exception("rename failed: %s -> %s", old_name, new_name)
+            self.notify(f"Rename failed: {old_name} → {new_name}", severity="error")
+            return
 
         self._update_title_bar()
 
@@ -1312,7 +1348,9 @@ class PickerApp(App):
             nav = "[b]↑/↓[/b] Navigate"
         else:
             nav = "[b]↑/↓/←/→[/b] Navigate"
-        self.query_one("#hint-bar", Static).update(
+
+        hint = self.query_one("#hint-bar", Static)
+        hint.update(
             f"[#7aa2f7][b]Ctrl+s[/b] Sessions  [b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]  [b]F1[/b] Help  [b]Tab[/b] View  {nav}  [b]Enter[/b] Jump"
             f"  [#00D26A][b]Ctrl+y[/b] Allow[/]  [#00D26A][b]Ctrl+a[/b] Allow always[/]  [#db4b4b][b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session[/]"
             f"  [b]Ctrl+o[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"

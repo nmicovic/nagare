@@ -151,17 +151,17 @@ def _install_hooks() -> bool:
 
     hooks = settings.setdefault("hooks", {})
 
-    # For each event, add nagare hooks if not already present
+    # For each event: remove old nagare hooks, then add fresh ones.
+    # This ensures timeouts and matchers stay up-to-date on re-run.
     for event, hook_groups in nagare_hooks.items():
         existing = hooks.get(event, [])
-        # Check if nagare hook already installed
-        already_installed = any(
-            any("nagare hook-state" in h.get("command", "") for h in group.get("hooks", []))
-            for group in existing
-        )
-        if not already_installed:
-            existing.extend(hook_groups)
-            hooks[event] = existing
+        # Remove any existing nagare hooks (will be re-added with current config)
+        cleaned = [
+            group for group in existing
+            if not any("nagare hook-state" in h.get("command", "") for h in group.get("hooks", []))
+        ]
+        cleaned.extend(hook_groups)
+        hooks[event] = cleaned
 
     settings["hooks"] = hooks
     CLAUDE_SETTINGS_PATH.write_text(json.dumps(settings, indent=2))

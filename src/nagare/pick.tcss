@@ -58,6 +58,26 @@ Screen {
     padding: 1 1;
 }
 
+#ctx-progress {
+    height: 1;
+    margin: 0 1;
+    padding: 0;
+}
+
+#ctx-progress Bar {
+    color: $primary;
+    background: $surface;
+}
+
+#ctx-progress PercentageStatus {
+    color: $text-muted;
+}
+
+#detail-rule {
+    margin: 0 1;
+    color: $panel;
+}
+
 #preview-scroll {
     height: 1fr;
     background: $background;
