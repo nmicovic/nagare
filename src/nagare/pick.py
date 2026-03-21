@@ -679,6 +679,7 @@ class PickerApp(App):
 
     # ── Grid view ──
 
+
     def _rebuild_grid(self) -> None:
         """Rebuild the grid with session cells."""
         container = self.query_one("#grid-view")
@@ -782,7 +783,7 @@ class PickerApp(App):
             try:
                 cell = self.query_one(f"#cell-{gen}-{i}")
                 max_width = cell.size.width - 4
-                if max_width > 0:
+                if max_width > 10:  # Skip truncation if layout not ready
                     lines = [line[:max_width] for line in lines]
             except Exception:
                 pass
@@ -826,12 +827,11 @@ class PickerApp(App):
         if self._view_mode == "list":
             self._view_mode = "grid"
             self.query_one("#list-view").display = False
-            self.query_one("#grid-view").display = True
             # Stop list timer, start grid timer
             if self._list_timer:
                 self._list_timer.stop()
             self._rebuild_grid()
-            self._update_grid_previews()
+            self.query_one("#grid-view").display = True
             self._grid_timer = self.set_interval(
                 self._grid_refresh_interval, self._poll_grid
             )
