@@ -1,6 +1,10 @@
-# nagare 流れ
+<p align="center">
+  <img src="images/nagare-logo-glowing.jpg" alt="nagare" width="400">
+</p>
 
-A tmux-integrated session manager for AI coding agents. Monitor, switch, and control multiple Claude Code and OpenCode sessions from a single interface.
+<h1 align="center">nagare 流れ</h1>
+
+<p align="center">A tmux-integrated session manager for AI coding agents.<br>Monitor, switch, and control multiple Claude Code and OpenCode sessions from a single interface.</p>
 
 ## What it does
 
