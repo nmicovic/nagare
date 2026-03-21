@@ -1,10 +1,9 @@
-<p align="center">
-  <img src="images/nagare-logo-glowing.jpg" alt="nagare" width="400">
-</p>
-
 <h1 align="center">nagare 流れ</h1>
-
 <p align="center">A tmux-integrated session manager for AI coding agents.<br>Monitor, switch, and control multiple Claude Code and OpenCode sessions from a single interface.</p>
+
+<p align="center">
+  <img src="images/nagare-logo-glowing.jpg" alt="nagare" width="550">
+</p>
 
 ## What it does
 
@@ -116,6 +115,7 @@ Four delivery methods, configurable per event type:
 | **Popup** | Rich TUI overlay with session preview |
 
 Two event types:
+
 - **needs_input** — agent needs permission or user action
 - **task_complete** — agent finished after working longer than `min_working_seconds`
 
@@ -124,6 +124,7 @@ Configure via `Ctrl+e` (config file) or the notification center settings tab (`p
 ### Notification center (`prefix + e`)
 
 Two tabs:
+
 - **Notifications** — view, dismiss, jump to sessions
 - **Settings** — toggle notification methods interactively
 
@@ -180,6 +181,7 @@ Preview poll (configurable) → tmux capture-pane → live preview
 ```
 
 Key components:
+
 - **Scanner** — discovers agents across all tmux sessions via `list-panes -a`
 - **Hooks** — Claude Code lifecycle events write state files for real-time detection
 - **OpenCode plugin** — TypeScript plugin writes state files in the same format
