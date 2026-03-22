@@ -51,12 +51,21 @@ def create_session(
     if name is None:
         name = resolved.name
 
-    # Ensure unique session name
-    name = _unique_session_name(name)
+    # Check if tmux session already exists
+    existing = set()
+    try:
+        existing = set(run_tmux("list-sessions", "-F", "#{session_name}").splitlines())
+    except Exception:
+        pass
 
-    # Create tmux session
-    run_tmux("new-session", "-d", "-s", name, "-c", str(resolved))
-    logger.info("created session %s at %s", name, resolved)
+    if name in existing:
+        # Session exists — just launch agent in it
+        logger.info("reusing existing tmux session %s", name)
+    else:
+        # Create new tmux session
+        name = _unique_session_name(name)
+        run_tmux("new-session", "-d", "-s", name, "-c", str(resolved))
+        logger.info("created session %s at %s", name, resolved)
 
     # Launch agent
     flag = " -c" if continue_session else ""

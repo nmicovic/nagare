@@ -54,11 +54,12 @@ _HELP_TEXT = """\
   [b]Enter[/b]        Jump to selected session
   [b]Ctrl+y[/b]       Allow (NEEDS INPUT sessions only)
   [b]Ctrl+a[/b]       Allow always (NEEDS INPUT sessions only)
-  [b]Ctrl+s[/b]       Session manager (load/unload)
+  [b]Ctrl+s[/b]       Show/hide saved sessions
+  [b]Ctrl+d[/b]       Delete saved session from registry
   [b]Ctrl+n[/b]       New session
   [b]Ctrl+r[/b]       Quick prototype
   [b]F2[/b]            Rename session
-  [b]Ctrl+w[/b]       Kill agent pane
+  [b]Ctrl+w[/b]       Unload agent (kill pane, keep in saved)
   [b]Ctrl+x[/b]       Kill entire tmux session
   [b]Esc[/b]          Close picker
 
@@ -361,7 +362,7 @@ class NagareCommands(Provider):
         return [
         ("New Session", "Create a new tmux session with an agent (Ctrl+n)", "_new_session"),
         ("Quick Prototype", f"Fast prototype in {quick_path} (Ctrl+r)", "_quick_prototype"),
-        ("Session Manager", "Load/unload registered sessions (Ctrl+s)", "_session_manager"),
+        ("Toggle Saved Sessions", "Show/hide unloaded sessions (Ctrl+s)", "_toggle_saved"),
         ("Toggle Grid View", "Switch between list and grid (Tab)", "_toggle_view"),
         ("Cycle Sort", "Cycle sort: status → name → agent (Ctrl+o)", "_cycle_sort"),
         ("Cycle Theme", "Change color theme (Ctrl+t)", "_cycle_theme"),
@@ -418,6 +419,8 @@ class PickerApp(App):
         self._rename_mode = False
         self._renaming_session: Session | None = None
         self._sort_mode = "status"
+        self._show_saved = False
+        self._saved_sessions: list = []  # RegisteredSession objects
         self._help_visible = False
         self._view_mode = "list"  # "list" or "grid"
         self._grid_selected = 0  # Index in _filtered_sessions for grid
@@ -891,18 +894,53 @@ class PickerApp(App):
     def _rebuild_list(self) -> None:
         lv = self.query_one("#session-list", ListView)
         lv.clear()
+
+        # Active sessions
         if self._filtered_sessions:
             ages = _get_all_session_ages()
-            # Count how many agents share each session name
             name_counts: dict[str, int] = {}
             for s in self._filtered_sessions:
                 name_counts[s.name] = name_counts.get(s.name, 0) + 1
             for session in self._filtered_sessions:
                 lv.append(_make_item(session, self._topics, ages, self._current_session, name_counts))
-            # Defer index setting so the DOM has the new items first
-            self.call_after_refresh(self._ensure_list_selection, 0)
-        else:
+
+        # Saved (unloaded) sessions
+        self._saved_sessions = []
+        if self._show_saved:
+            from nagare.registry import SessionRegistry
+            reg = SessionRegistry()
+            active_names = {s.name for s in self._sessions}
+            query = self.query_one("#search", Input).value.strip()
+            for rs in reg.list_all():
+                if rs.name in active_names:
+                    continue
+                if query and not _fuzzy_match(query, rs.name):
+                    continue
+                self._saved_sessions.append(rs)
+
+            if self._saved_sessions:
+                # Section header
+                lv.append(ListItem(
+                    Static(f"[dim]── Saved ({len(self._saved_sessions)}) ──[/dim]"),
+                    disabled=True,
+                ))
+                for rs in self._saved_sessions:
+                    date = rs.last_accessed[:10] if rs.last_accessed else "never"
+                    agent_icon = {"claude": "[bold #da7756 on #3b2820] C [/]", "opencode": "[bold #00e5ff on #002b33] O [/]"}.get(rs.agent, "[dim] ? [/]")
+                    lv.append(ListItem(
+                        Vertical(
+                            Static(f"[#565f89]●[/]  {agent_icon} [b]{rs.name}[/b]  [dim]NOT LOADED[/dim]"),
+                            Static(f"    📁 {rs.path}"),
+                            Static(f"    [dim]Last: {date}[/dim]"),
+                            classes="session-item",
+                        ),
+                    ))
+
+        if not self._filtered_sessions and not self._saved_sessions:
             lv.append(ListItem(Static("[dim]No matching sessions[/dim]")))
+
+        if self._filtered_sessions or self._saved_sessions:
+            self.call_after_refresh(self._ensure_list_selection, 0)
 
     def _ensure_list_selection(self, index: int) -> None:
         """Force highlight on a list item after the DOM has refreshed."""
@@ -1033,9 +1071,40 @@ class PickerApp(App):
         self.exit()
 
     def _jump_to_highlighted(self) -> None:
+        # Check if we're on a saved session
+        if self._show_saved and self._saved_sessions:
+            lv = self.query_one("#session-list", ListView)
+            idx = lv.index
+            if idx is not None:
+                saved_start = len(self._filtered_sessions) + 1  # +1 for header
+                saved_idx = idx - saved_start
+                if 0 <= saved_idx < len(self._saved_sessions):
+                    self._load_saved_session(self._saved_sessions[saved_idx])
+                    return
+
         session = self._get_highlighted_session()
         if session:
             self._jump_to_session(session)
+
+    def _load_saved_session(self, rs) -> None:
+        """Load a saved/registered session."""
+        from nagare.session import create_session
+        try:
+            create_session(
+                path=rs.path,
+                name=rs.name,
+                agent=rs.agent,
+                continue_session=True,
+            )
+            from nagare.registry import SessionRegistry
+            SessionRegistry().touch(rs.name)
+            self.notify(f"Loaded {rs.name}", severity="information")
+            logger.info("loaded saved session %s", rs.name)
+            # Delay refresh slightly — agent process needs a moment to start
+            self.set_timer(0.5, self._refresh_sessions)
+        except Exception as e:
+            logger.exception("failed to load saved session %s", rs.name)
+            self.notify(f"Failed to load {rs.name}: {e}", severity="error")
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         lv = self.query_one("#session-list", ListView)
@@ -1057,9 +1126,10 @@ class PickerApp(App):
         "ctrl+y": "_quick_approve",
         "ctrl+a": "_quick_approve_always",
         "ctrl+w": "_kill_agent_pane",
+        "ctrl+d": "_delete_saved_session",
         "ctrl+x": "_kill_tmux_session",
         "ctrl+o": "_cycle_sort",
-        "ctrl+s": "_session_manager",
+        "ctrl+s": "_toggle_saved",
         "ctrl+n": "_new_session",
         "ctrl+r": "_quick_prototype",
         "ctrl+e": "_open_config",
@@ -1200,7 +1270,7 @@ class PickerApp(App):
             mark_path_dead(session.path)
             run_tmux("kill-pane", "-t", target)
             logger.info("killed agent pane %s", target)
-            self.notify(f"Killed agent in {session.name}", severity="warning")
+            self.notify(f"Unloaded {session.name}", severity="warning")
         except Exception:
             logger.exception("kill pane failed for %s", target)
         self._refresh_sessions()
@@ -1323,9 +1393,30 @@ class PickerApp(App):
 
         self._update_title_bar()
 
-    def _session_manager(self) -> None:
-        """Exit picker with a signal to open the session manager."""
-        self.exit(result="session_manager")
+    def _delete_saved_session(self) -> None:
+        """Delete the highlighted saved session from registry."""
+        if not self._show_saved or not self._saved_sessions:
+            return
+        lv = self.query_one("#session-list", ListView)
+        idx = lv.index
+        if idx is None:
+            return
+        saved_start = len(self._filtered_sessions) + 1
+        saved_idx = idx - saved_start
+        if 0 <= saved_idx < len(self._saved_sessions):
+            rs = self._saved_sessions[saved_idx]
+            from nagare.registry import SessionRegistry
+            SessionRegistry().remove(rs.name)
+            self.notify(f"Deleted {rs.name} from registry", severity="warning")
+            logger.info("deleted saved session %s", rs.name)
+            self._apply_filter()
+
+    def _toggle_saved(self) -> None:
+        """Toggle visibility of saved/unloaded sessions in the list."""
+        self._show_saved = not self._show_saved
+        self._apply_filter()
+        self._update_hint_bar()
+        self._update_title_bar()
 
     def _open_config(self) -> None:
         """Ensure config has all sections, then open in editor."""
@@ -1380,10 +1471,12 @@ class PickerApp(App):
         row1 = (
             f" [b]Enter[/b] Jump  {nav}  [b]Tab[/b] View  [b]F2[/b] Rename"
             f"  [#00D26A][b]Ctrl+y[/b] Allow  [b]Ctrl+a[/b] Always[/]"
-            f"  [#db4b4b][b]Ctrl+w[/b] Kill  [b]Ctrl+x[/b] Kill session[/]"
+            f"  [#db4b4b][b]Ctrl+w[/b] Unload  [b]Ctrl+x[/b] Kill session[/]"
         )
+        saved_label = "Hide saved" if self._show_saved else "Show saved"
+        saved_extra = "  [#db4b4b][b]Ctrl+d[/b] Remove saved[/]" if self._show_saved else ""
         row2 = (
-            f" [#7aa2f7][b]Ctrl+s[/b] Sessions  [b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]"
+            f" [#7aa2f7][b]Ctrl+s[/b] {saved_label}  [b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]{saved_extra}"
             f"  [b]Ctrl+o[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
             f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Ctrl+p[/b] Commands"
             f"  [b]F1[/b] Help  [b]Esc[/b] Cancel"

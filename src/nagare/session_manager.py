@@ -196,10 +196,9 @@ class SessionManagerApp(App):
                 self._recently_loaded.add(s.name)
                 self._reg.touch(s.name)
                 logger.info("loaded session %s", s.name)
-            except (ValueError, RuntimeError) as e:
+            except Exception as e:
                 logger.exception("failed to load session %s", s.name)
-                self.query_one("#title-bar", Static).update(
-                    f"[b]Session Manager[/b]  [bold red]Error: {e}[/bold red]"
+                self.notify(f"Failed to load {s.name}: {e}", severity="error"
                 )
                 return
 
