@@ -14,19 +14,27 @@ The core workflow: the user runs many AI agent instances across tmux sessions si
 
 - **Hook Handler (`hooks.py`)** — Receives Claude Code lifecycle events (UserPromptSubmit, Stop, Notification, PreToolUse, SessionStart, SessionEnd) via stdin JSON. Writes state files to `~/.local/share/nagare/states/<session_id>.json`. Determines notification event type (`needs_input` or `task_complete`), loads config, resolves per-session overrides, and dispatches to delivery functions. Cleans up stale dead state files on new session start.
 
-- **Notification Delivery (`notifications/deliver.py`)** — Four delivery methods: `send_toast()` (tmux status bar), `send_bell()` (terminal bell), `send_os_notify()` (native OS notification with WSL detection), `send_popup()` (rich popup TUI via tmux display-popup). All fire-and-forget with silent error handling.
+- **Notification Delivery (`notifications/deliver.py`)** — Four delivery methods: `send_toast()` (tmux status bar), `send_bell()` (terminal bell), `send_os_notify()` (native OS notification with WSL detection), `send_popup()` (rich popup TUI via tmux display-popup). All fire-and-forget with silent error handling. Popup uses FIFO watcher for overlay support.
 
-- **Popup Notification (`popup_notif.py`)** — Small Textual TUI launched by `tmux display-popup`. Shows status icon, session name, event details, Claude's last message. Enter jumps to session, Esc dismisses, auto-dismisses after configurable timeout with countdown.
+- **Popup Notification (`popup_notif.py`)** — Textual TUI launched by `tmux display-popup`. Shows status icon, session name, event details, live pane preview. Enter jumps to session, Ctrl+y allows, Ctrl+a allows always, Esc dismisses, auto-dismisses after configurable timeout.
 
 - **Notification Store (`notifications/store.py`)** — JSON-file backed store for notification history with read/unread tracking.
 
 - **State Reader (`state.py`)** — Reads hook-written state files keyed by project path (cwd). Resolves conflicts when multiple sessions share the same cwd by preferring live states over dead ones, and most recent timestamps among equals.
 
-- **Scanner (`tmux/scanner.py`)** — Discovers tmux sessions, finds ALL AI agent panes (Claude Code and OpenCode) across all windows (`list-panes -s`). A single tmux session can contain multiple agents. Combines hook state with pane-scraping fallback for status detection.
+- **Scanner (`tmux/scanner.py`)** — Discovers tmux sessions, finds ALL AI agent panes (Claude Code and OpenCode) across all windows (`list-panes -a` single call). A single tmux session can contain multiple agents. Combines hook state with pane-scraping fallback for status detection.
 
 - **Status Detection (`tmux/status.py`)** — Fallback pane content scraping when hooks haven't fired yet. Detects idle prompts, choice/confirmation dialogs, running spinners.
 
 - **History (`history.py`)** — Reads `~/.claude/history.jsonl` for conversation topics per project.
+
+- **Token Tracking (`tokens.py`)** — Parses Claude Code transcript JSONL files for per-session token usage (input, output, cache). Shown in dashboard and detail panel.
+
+- **Session Registry (`registry.py`)** — Persistent JSON store (`~/.local/share/nagare/sessions.json`) of known sessions with starred status, last accessed dates. Auto-discovers from running agents.
+
+- **Session Creator (`session.py`)** — Creates tmux sessions with agents. Reuses existing tmux sessions. Supports quick prototypes via `resolve_path()`.
+
+- **Icons (`icons.py`)** — Configurable icon sets: emoji (default) and ASCII (maximum compatibility).
 
 - **Notification Center (`notifs.py`)** — ListView-based TUI with two tabs: Notifications (view/dismiss/jump) and Settings (interactive toggle switches for notification config). Launched via `prefix + e`.
 
@@ -79,8 +87,10 @@ Picker poll (1s) → tmux capture-pane → preview panel update
 
 - `nagare pick` (default) — open the session picker TUI
 - `nagare notifs` — open the notification center
-- `nagare setup` — install Claude Code hooks into `~/.claude/settings.json`
+- `nagare new [path] [--agent claude|opencode]` — create a new session
+- `nagare setup` — install Claude Code hooks and OpenCode plugin
 - `nagare hook-state` — internal: called by Claude Code hooks
+- `nagare popup-watcher` — internal: FIFO watcher for popup overlays
 
 ## tmux Integration
 
@@ -104,6 +114,18 @@ tail -50 ~/.local/share/nagare/nagare.log
 ```
 
 The log captures: hook events, notification delivery, state changes, view toggles, and exceptions with full tracebacks. This is especially important for hooks, which run as subprocesses where stderr is invisible.
+
+## Known Limitations & Gotchas
+
+- **tmux display-popup from hooks:** Popups from hook subprocesses create new windows instead of overlays. Solved with FIFO watcher (`~/.local/share/nagare/popup.fifo`). Never call display-popup directly from hooks.
+- **Nerd Font icons don't work in Textual:** Rich library doesn't handle Private Use Area characters correctly in Textual's layout engine. Use emoji or ASCII icons instead.
+- **Hook timeout is in SECONDS:** Claude Code's `timeout` field is seconds, not milliseconds. Set to 5.
+- **`_is_active_session` uses `list-clients`:** Not `display-message`, because hooks run inside the session they report about.
+- **Scanner skips `capture-pane` when hook state exists:** For efficiency. Means `SessionDetails` (model, branch, context) are empty for hook-tracked sessions — parsed from pane content only in the preview panel.
+- **`create_session` reuses existing tmux sessions:** If a tmux session with the target name exists, it sends the agent command to it instead of creating `-2` duplicates.
+- **Session registry can accumulate fake entries:** Test mocks create entries with `/home/user/` paths. Clean these up if found.
+- **Textual's `App._registry` is reserved:** Don't name instance variables `_registry` — conflicts with Textual's internal widget registry and crashes on shutdown.
+- **Async polling is critical:** All tmux subprocess calls in poll methods must use `asyncio.to_thread()` to avoid blocking Textual's event loop.
 
 ## Development
 

@@ -64,34 +64,33 @@ The main interface. Two views:
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Jump to session |
+| `Enter` | Jump to session / Load saved session |
 | `↑/↓` | Navigate |
-| `Tab` | Toggle list/grid |
+| `Tab` | Toggle list/grid view |
 | `Ctrl+y` | Allow (approve permission) |
 | `Ctrl+a` | Allow always |
+| `Ctrl+f` | Star/unstar session (pinned to top) |
 | `F2` | Rename session |
-| `Ctrl+s` | Session manager |
-| `Ctrl+n` | New session |
+| `Ctrl+s` | Show/hide saved (unloaded) sessions |
+| `Ctrl+d` | Delete saved session from registry |
+| `Ctrl+n` | New session (full form) |
 | `Ctrl+r` | Quick prototype |
-| `Ctrl+w` | Kill agent pane |
-| `Ctrl+x` | Kill tmux session |
+| `Ctrl+w` | Unload agent (kill pane) |
+| `Ctrl+x` | Kill entire tmux session |
 | `Ctrl+o` | Cycle sort (status/name/agent) |
 | `Ctrl+e` | Open config in editor |
 | `Ctrl+t` | Cycle theme |
-| `Ctrl+p` | Command palette |
+| `Ctrl+p` | Command palette (search all actions) |
 | `F1` | Help |
 | `Esc` | Close |
 
-### Session manager (`Ctrl+s`)
+### Saved sessions (`Ctrl+s`)
 
-Persistent registry of your projects. Load multiple sessions at once:
+Press `Ctrl+s` to reveal unloaded sessions below the active ones. Star sessions with `Ctrl+f` to pin them to the top. Sessions are auto-discovered from running agents and remembered across restarts.
 
-1. Open picker → `Ctrl+s`
-2. Select a session → `Enter` to load (starts tmux + agent with `-c` to continue)
-3. Select another → `Enter` to load
-4. `Esc` → back to picker with new sessions visible
-
-Sessions are auto-discovered from running tmux agents and remembered across restarts.
+- `Enter` on a saved session loads it (creates tmux + agent with `-c`)
+- `Ctrl+d` deletes a saved session from the registry
+- `Ctrl+s` again hides the saved section
 
 ### Quick prototype (`Ctrl+r`)
 
