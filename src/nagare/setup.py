@@ -85,6 +85,8 @@ shrink_duration = 0.3
 # Available: tokyonight, tokyonight-storm, tokyonight-light, catppuccin-mocha,
 #            catppuccin-latte, gruvbox-dark, gruvbox-light, nord, dracula, solarized-dark
 theme = "tokyonight"
+# Icon style: "emoji" (default, colorful) or "ascii" (maximum compatibility)
+icon_style = "emoji"
 """
 
 

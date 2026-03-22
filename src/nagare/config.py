@@ -69,6 +69,7 @@ class NagareConfig:
     picker_height: str = "80%"
     grid_refresh_interval: float = 0.5
     quick_project_path: str = "~/Prototypes"
+    icon_style: str = "emoji"  # "emoji" or "ascii"
     theme: str = "tokyonight"
 
 
@@ -124,6 +125,7 @@ def load_config() -> NagareConfig:
         picker_height=picker.get("popup_height", "80%"),
         grid_refresh_interval=picker.get("grid_refresh_interval", 0.5),
         quick_project_path=picker.get("quick_project_path", "~/Prototypes"),
+        icon_style=appearance.get("icon_style", "emoji"),
         theme=appearance.get("theme", "tokyonight"),
     )
 

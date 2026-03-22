@@ -17,6 +17,8 @@ from textual.timer import Timer
 from textual.widgets import Input, ListView, ListItem, ProgressBar, Rule, Static
 
 from nagare.config import AnimationConfig, load_config, save_theme
+import nagare.icons as _icons_mod
+from nagare.icons import load_icons
 from nagare.log import logger
 from nagare.history import load_conversation_topics
 from nagare.models import Session, SessionStatus
@@ -106,7 +108,7 @@ def _format_line1(session: Session, ages: dict[str, str] | None = None, current:
     agent = session.agent_icon
     label = _STATUS_LABEL.get(session.status, "")
     age = (ages or {}).get(session.name, "")
-    age_str = f"  [dim]⏱ {age}[/dim]" if age else ""
+    age_str = f"  [dim]{_icons_mod.icons.timer} {age}[/dim]" if age else ""
     here = "  [#7aa2f7]◄ you[/]" if current else ""
     window = f"[dim]:{session.window_index}[/dim]" if show_window else ""
     return f"{icon}  {agent} [b]{session.name}[/b]{window}{here}  {label}{age_str}"
@@ -120,12 +122,12 @@ def _format_line2(session: Session) -> str:
     if d.model:
         parts.append(f"  🤖 {d.model}")
     if d.context_usage:
-        parts.append(f"  📊 {d.context_usage}")
+        parts.append(f"  {_icons_mod.icons.load} {d.context_usage}")
     return "   " + "".join(parts) if parts else ""
 
 
 def _format_line3(session: Session) -> str:
-    return f"    📁 {session.path}"
+    return f"    {_icons_mod.icons.folder} {session.path}"
 
 
 def _format_topic(session: Session, topics: dict[str, str]) -> str:
@@ -135,7 +137,7 @@ def _format_topic(session: Session, topics: dict[str, str]) -> str:
     topic = topic.strip().split("\n")[0]
     if len(topic) > 80:
         topic = topic[:77] + "..."
-    return f"    [dim italic]💬 {topic}[/dim italic]"
+    return f"    [dim italic]{_icons_mod.icons.message} {topic}[/dim italic]"
 
 
 def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | None = None, current_session: str = "", name_counts: dict[str, int] | None = None) -> ListItem:
@@ -186,7 +188,7 @@ def _get_session_details(session: Session) -> str:
     try:
         created = int(run_tmux("display-message", "-t", name, "-p", "#{session_created}"))
         age = _human_duration(time.time() - created)
-        parts.append(f"  ⏱  Session age: [b]{age}[/b]")
+        parts.append(f"  {_icons_mod.icons.timer}  Session age: [b]{age}[/b]")
     except (ValueError, Exception):
         pass
     try:
@@ -201,7 +203,7 @@ def _get_session_details(session: Session) -> str:
                 marker = " [b]*[/b]" if active == "1" else ""
                 pane_info = f" ({panes} panes)" if int(panes) > 1 else ""
                 window_lines.append(f"    {idx}: {wname}{pane_info}{marker}")
-            parts.append(f"  🪟  Windows ({len(windows_raw.splitlines())}):")
+            parts.append(f"  {_icons_mod.icons.window}  Windows ({len(windows_raw.splitlines())}):")
             parts.extend(window_lines)
     except Exception:
         pass
@@ -215,7 +217,7 @@ def _get_session_details(session: Session) -> str:
             for line in panes_raw.splitlines():
                 pane_id, cmd, pid = line.split(":")
                 proc_lines.append(f"    {pane_id}  {cmd} [dim](pid {pid})[/dim]")
-            parts.append(f"  ⚙  Processes:")
+            parts.append(f"  {_icons_mod.icons.process}  Processes:")
             parts.extend(proc_lines)
     except Exception:
         pass
@@ -226,7 +228,7 @@ def _get_session_details(session: Session) -> str:
             "-p", "#{pane_width}x#{pane_height}",
         )
         if dims:
-            parts.append(f"  📐 Pane size: {dims}")
+            parts.append(f"  {_icons_mod.icons.pane_size} Pane size: {dims}")
     except Exception:
         pass
     # Token usage for this session
@@ -234,7 +236,7 @@ def _get_session_details(session: Session) -> str:
         from nagare.tokens import get_session_tokens
         usage = get_session_tokens(session.path)
         if usage.total > 0:
-            parts.append(f"  🪙 Tokens: {usage.display}")
+            parts.append(f"  {_icons_mod.icons.tokens} Tokens: {usage.display}")
     except Exception:
         pass
 
@@ -261,7 +263,7 @@ def _get_dashboard_stats(sessions: list[Session]) -> str:
     try:
         with open("/proc/loadavg") as f:
             load_1, load_5, load_15, *_ = f.read().split()
-        parts.append(f"  📊 Load: {load_1} / {load_5} / {load_15}")
+        parts.append(f"  {_icons_mod.icons.load} Load: {load_1} / {load_5} / {load_15}")
     except Exception:
         pass
     try:
@@ -274,7 +276,7 @@ def _get_dashboard_stats(sessions: list[Session]) -> str:
             if "MemTotal" in mem and "MemAvailable" in mem:
                 total_gb = mem["MemTotal"] / 1048576
                 used_gb = (mem["MemTotal"] - mem["MemAvailable"]) / 1048576
-                parts.append(f"  🧠 Mem: {used_gb:.1f}G / {total_gb:.1f}G")
+                parts.append(f"  {_icons_mod.icons.memory} Mem: {used_gb:.1f}G / {total_gb:.1f}G")
     except Exception:
         pass
     try:
@@ -289,7 +291,7 @@ def _get_dashboard_stats(sessions: list[Session]) -> str:
             hz = os.sysconf("SC_CLK_TCK")
             tmux_age = uptime_s - (start_ticks / hz)
             if tmux_age > 0:
-                parts.append(f"  🖥  tmux uptime: {_human_duration(tmux_age)}")
+                parts.append(f"  {_icons_mod.icons.server}  tmux uptime: {_human_duration(tmux_age)}")
     except Exception:
         pass
 
@@ -301,7 +303,7 @@ def _get_dashboard_stats(sessions: list[Session]) -> str:
         total_tokens = sum(u.total for u in tokens.values())
         total_output = sum(u.output_tokens for u in tokens.values())
         if total_tokens > 0:
-            parts.append(f"  🪙 Tokens: {_format_tokens(total_tokens)} ({_format_tokens(total_output)} out)")
+            parts.append(f"  {_icons_mod.icons.tokens} Tokens: {_format_tokens(total_tokens)} ({_format_tokens(total_output)} out)")
     except Exception:
         pass
     return "\n".join(parts)
@@ -457,6 +459,7 @@ class PickerApp(App):
         config = load_config()
         self._config = config
         self._anim_config = config.animation
+        load_icons()
         self._grid_refresh_interval = config.grid_refresh_interval
         for t in THEMES.values():
             self.register_theme(t)
@@ -733,10 +736,10 @@ class PickerApp(App):
         here = "  [#7aa2f7]◄ you[/]" if is_current else ""
         info_lines = [
             Static(f"{icon} [b]{session.name}[/b]{here}  {label}", classes="cell-title"),
-            Static(f"📁 {session.path}{branch}", classes="cell-meta"),
+            Static(f"{_icons_mod.icons.folder} {session.path}{branch}", classes="cell-meta"),
         ]
         if topic:
-            info_lines.append(Static(f"[dim]💬 {topic}[/dim]", classes="cell-topic"))
+            info_lines.append(Static(f"[dim]{_icons_mod.icons.message} {topic}[/dim]", classes="cell-topic"))
         info_widget = Vertical(*info_lines, classes="cell-info")
 
         header_box = Horizontal(block_widget, info_widget, classes="cell-header")
@@ -930,7 +933,7 @@ class PickerApp(App):
                     lv.append(ListItem(
                         Vertical(
                             Static(f"[#565f89]●[/]  {agent_icon} [b]{rs.name}[/b]  [dim]NOT LOADED[/dim]"),
-                            Static(f"    📁 {rs.path}"),
+                            Static(f"    {_icons_mod.icons.folder} {rs.path}"),
                             Static(f"    [dim]Last: {date}[/dim]"),
                             classes="session-item",
                         ),

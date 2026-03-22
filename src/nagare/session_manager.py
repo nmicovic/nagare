@@ -60,7 +60,8 @@ def _format_session_lines(s: RegisteredSession, loaded: bool) -> list[str]:
         date = s.last_accessed[:10]
 
     line1 = f"{status}  {agent_icon} [b]{s.name}[/b]"
-    line2 = f"    📁 {s.path}"
+    import nagare.icons as _icons_mod
+    line2 = f"    {_icons_mod.icons.folder} {s.path}"
     line3 = f"    [dim]Last accessed: {date}[/dim]" if date else "    [dim]Never accessed[/dim]"
 
     return [line1, line2, line3]
