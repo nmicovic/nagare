@@ -16,6 +16,7 @@ class RegisteredSession:
     path: str
     agent: str = "claude"
     last_accessed: str = ""
+    starred: bool = False
 
     def touch(self) -> None:
         self.last_accessed = datetime.now(timezone.utc).isoformat()
@@ -72,6 +73,19 @@ class SessionRegistry:
     def remove(self, name: str) -> None:
         self._sessions = [s for s in self._sessions if s.name != name]
         self._save()
+
+    def toggle_star(self, name: str) -> bool:
+        """Toggle starred status. Returns new starred state."""
+        s = self.find(name)
+        if s:
+            s.starred = not s.starred
+            self._save()
+            return s.starred
+        return False
+
+    def is_starred(self, name: str) -> bool:
+        s = self.find(name)
+        return s.starred if s else False
 
     def touch(self, name: str) -> None:
         s = self.find(name)

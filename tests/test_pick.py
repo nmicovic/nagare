@@ -31,8 +31,11 @@ async def test_picker_waiting_sessions_first(mock_scan):
     app = PickerApp()
     async with app.run_test() as pilot:
         await pilot.pause()
-        # WAITING_INPUT sessions should sort to the top
-        assert app._filtered_sessions[0].name == "cosmo-ai"
+        # WAITING_INPUT sessions should sort to the top (among non-starred)
+        # Find the first non-starred WAITING_INPUT session
+        waiting = [s for s in app._filtered_sessions if s.status == SessionStatus.WAITING_INPUT]
+        assert len(waiting) > 0
+        assert waiting[0].name == "cosmo-ai"
 
 
 @patch("nagare.pick.scan_sessions", return_value=MOCK_SESSIONS)

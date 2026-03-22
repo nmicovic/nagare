@@ -60,6 +60,7 @@ _HELP_TEXT = """\
   [b]Ctrl+d[/b]       Delete saved session from registry
   [b]Ctrl+n[/b]       New session
   [b]Ctrl+r[/b]       Quick prototype
+  [b]Ctrl+f[/b]       Star/unstar session (pinned to top)
   [b]F2[/b]            Rename session
   [b]Ctrl+w[/b]       Unload agent (kill pane, keep in saved)
   [b]Ctrl+x[/b]       Kill entire tmux session
@@ -103,7 +104,7 @@ def _get_all_session_ages() -> dict[str, str]:
         return {}
 
 
-def _format_line1(session: Session, ages: dict[str, str] | None = None, current: bool = False, show_window: bool = False) -> str:
+def _format_line1(session: Session, ages: dict[str, str] | None = None, current: bool = False, show_window: bool = False, starred: bool = False) -> str:
     icon = session.status_icon
     agent = session.agent_icon
     label = _STATUS_LABEL.get(session.status, "")
@@ -111,7 +112,8 @@ def _format_line1(session: Session, ages: dict[str, str] | None = None, current:
     age_str = f"  [dim]{_icons_mod.icons.timer} {age}[/dim]" if age else ""
     here = "  [#7aa2f7]◄ you[/]" if current else ""
     window = f"[dim]:{session.window_index}[/dim]" if show_window else ""
-    return f"{icon}  {agent} [b]{session.name}[/b]{window}{here}  {label}{age_str}"
+    star = "[#e0af68]★[/] " if starred else ""
+    return f"{icon}  {star}{agent} [b]{session.name}[/b]{window}{here}  {label}{age_str}"
 
 
 def _format_line2(session: Session) -> str:
@@ -140,11 +142,12 @@ def _format_topic(session: Session, topics: dict[str, str]) -> str:
     return f"    [dim italic]{_icons_mod.icons.message} {topic}[/dim italic]"
 
 
-def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | None = None, current_session: str = "", name_counts: dict[str, int] | None = None) -> ListItem:
+def _make_item(session: Session, topics: dict[str, str], ages: dict[str, str] | None = None, current_session: str = "", name_counts: dict[str, int] | None = None, starred_names: set[str] | None = None) -> ListItem:
     is_current = session.name == current_session
     show_window = (name_counts or {}).get(session.name, 0) > 1
+    is_starred = session.name in (starred_names or set())
     children = [
-        Static(_format_line1(session, ages, current=is_current, show_window=show_window)),
+        Static(_format_line1(session, ages, current=is_current, show_window=show_window, starred=is_starred)),
         Static(_format_line2(session)),
         Static(_format_line3(session)),
     ]
@@ -420,6 +423,7 @@ class PickerApp(App):
         self._anim_config = AnimationConfig()
         self._rename_mode = False
         self._renaming_session: Session | None = None
+        self._preserve_index: int | None = None
         self._sort_mode = "status"
         self._show_saved = False
         self._saved_sessions: list = []  # RegisteredSession objects
@@ -898,6 +902,17 @@ class PickerApp(App):
         lv = self.query_one("#session-list", ListView)
         lv.clear()
 
+        # Get starred names for sort priority and display
+        from nagare.registry import SessionRegistry
+        reg = SessionRegistry()
+        starred_names = {s.name for s in reg.list_all() if s.starred}
+
+        # Sort: starred first, then by current sort mode
+        if starred_names:
+            self._filtered_sessions.sort(
+                key=lambda s: (0 if s.name in starred_names else 1,)
+            )
+
         # Active sessions
         if self._filtered_sessions:
             ages = _get_all_session_ages()
@@ -905,7 +920,7 @@ class PickerApp(App):
             for s in self._filtered_sessions:
                 name_counts[s.name] = name_counts.get(s.name, 0) + 1
             for session in self._filtered_sessions:
-                lv.append(_make_item(session, self._topics, ages, self._current_session, name_counts))
+                lv.append(_make_item(session, self._topics, ages, self._current_session, name_counts, starred_names))
 
         # Saved (unloaded) sessions
         self._saved_sessions = []
@@ -921,6 +936,10 @@ class PickerApp(App):
                     continue
                 self._saved_sessions.append(rs)
 
+            # Sort saved: starred first, then newest first within each group
+            self._saved_sessions.sort(key=lambda s: s.last_accessed or "", reverse=True)
+            self._saved_sessions.sort(key=lambda s: 0 if s.starred else 1)
+
             if self._saved_sessions:
                 # Section header
                 lv.append(ListItem(
@@ -930,9 +949,10 @@ class PickerApp(App):
                 for rs in self._saved_sessions:
                     date = rs.last_accessed[:10] if rs.last_accessed else "never"
                     agent_icon = {"claude": "[bold #da7756 on #3b2820] C [/]", "opencode": "[bold #00e5ff on #002b33] O [/]"}.get(rs.agent, "[dim] ? [/]")
+                    star = "[#e0af68]★[/] " if rs.starred else ""
                     lv.append(ListItem(
                         Vertical(
-                            Static(f"[#565f89]●[/]  {agent_icon} [b]{rs.name}[/b]  [dim]NOT LOADED[/dim]"),
+                            Static(f"[#565f89]●[/]  {star}{agent_icon} [b]{rs.name}[/b]  [dim]NOT LOADED[/dim]"),
                             Static(f"    {_icons_mod.icons.folder} {rs.path}"),
                             Static(f"    [dim]Last: {date}[/dim]"),
                             classes="session-item",
@@ -943,14 +963,16 @@ class PickerApp(App):
             lv.append(ListItem(Static("[dim]No matching sessions[/dim]")))
 
         if self._filtered_sessions or self._saved_sessions:
-            self.call_after_refresh(self._ensure_list_selection, 0)
+            target_idx = getattr(self, '_preserve_index', None) or 0
+            self.call_after_refresh(self._ensure_list_selection, target_idx)
 
     def _ensure_list_selection(self, index: int) -> None:
         """Force highlight on a list item after the DOM has refreshed."""
         lv = self.query_one("#session-list", ListView)
-        if not self._filtered_sessions:
+        total_items = len(lv.children)
+        if total_items == 0:
             return
-        index = min(index, len(self._filtered_sessions) - 1)
+        index = min(index, total_items - 1)
         # Reset to None first to force the watcher to fire
         lv.index = None
         lv.index = index
@@ -1131,6 +1153,7 @@ class PickerApp(App):
         "ctrl+w": "_kill_agent_pane",
         "ctrl+d": "_delete_saved_session",
         "ctrl+x": "_kill_tmux_session",
+        "ctrl+f": "_toggle_star",
         "ctrl+o": "_cycle_sort",
         "ctrl+s": "_toggle_saved",
         "ctrl+n": "_new_session",
@@ -1412,7 +1435,43 @@ class PickerApp(App):
             SessionRegistry().remove(rs.name)
             self.notify(f"Deleted {rs.name} from registry", severity="warning")
             logger.info("deleted saved session %s", rs.name)
-            self._apply_filter()
+            self._rebuild_preserving_index()
+
+    def _rebuild_preserving_index(self) -> None:
+        """Rebuild list but keep the cursor near the same position."""
+        lv = self.query_one("#session-list", ListView)
+        old_idx = lv.index or 0
+        self._preserve_index = old_idx
+        self._apply_filter()
+        self._preserve_index = None
+
+    def _toggle_star(self) -> None:
+        """Toggle star on the highlighted session."""
+        from nagare.registry import SessionRegistry
+        reg = SessionRegistry()
+
+        # Check if it's an active session
+        session = self._get_highlighted_session()
+        if session:
+            if not reg.find(session.name):
+                reg.register(session.name, session.path, session.agent_type.value)
+            starred = reg.toggle_star(session.name)
+            self.notify(f"{'★' if starred else '☆'} {session.name}", severity="information")
+            self._rebuild_preserving_index()
+            return
+
+        # Check if it's a saved session
+        if self._show_saved and self._saved_sessions:
+            lv = self.query_one("#session-list", ListView)
+            idx = lv.index
+            if idx is not None:
+                saved_start = len(self._filtered_sessions) + 1
+                saved_idx = idx - saved_start
+                if 0 <= saved_idx < len(self._saved_sessions):
+                    rs = self._saved_sessions[saved_idx]
+                    starred = reg.toggle_star(rs.name)
+                    self.notify(f"{'★' if starred else '☆'} {rs.name}", severity="information")
+                    self._rebuild_preserving_index()
 
     def _toggle_saved(self) -> None:
         """Toggle visibility of saved/unloaded sessions in the list."""
@@ -1472,7 +1531,7 @@ class PickerApp(App):
 
         hint = self.query_one("#hint-bar", Static)
         row1 = (
-            f" [b]Enter[/b] Jump  {nav}  [b]Tab[/b] View  [b]F2[/b] Rename"
+            f" [b]Enter[/b] Jump  {nav}  [b]Tab[/b] View  [#e0af68][b]Ctrl+f[/b] ★[/]  [b]F2[/b] Rename"
             f"  [#00D26A][b]Ctrl+y[/b] Allow  [b]Ctrl+a[/b] Always[/]"
             f"  [#db4b4b][b]Ctrl+w[/b] Unload  [b]Ctrl+x[/b] Kill session[/]"
         )
