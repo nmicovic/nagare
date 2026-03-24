@@ -28,6 +28,31 @@ def _find_nagare_bin() -> str | None:
     return None
 
 
+def _get_active_pane_id() -> str | None:
+    """Get the pane ID of the user's active pane (where they're looking)."""
+    try:
+        # list-clients gives us the session, then get its active pane
+        result = run_tmux("list-clients", "-F", "#{session_name}")
+        if not result:
+            return None
+        active_session = result.splitlines()[0]
+        pane_id = run_tmux("display-message", "-t", active_session, "-p", "#{pane_id}")
+        return pane_id.strip() if pane_id else None
+    except Exception:
+        return None
+
+
+def _get_active_session() -> str | None:
+    """Get the session name the user's tmux client is attached to."""
+    try:
+        result = run_tmux("list-clients", "-F", "#{session_name}")
+        if result:
+            return result.splitlines()[0]
+    except Exception:
+        pass
+    return None
+
+
 def _get_client_name() -> str | None:
     """Get the name of the first attached tmux client."""
     try:
@@ -125,7 +150,9 @@ def send_popup(
         if working_seconds:
             popup_cmd += f" --duration {working_seconds}"
 
-        display_cmd = f"tmux display-popup -w 90% -h 90% -E '{popup_cmd}'"
+        # For FIFO: send just the popup command, watcher adds targeting
+        # For fallback: build full tmux command with client target
+        display_cmd = f"POPUP:{popup_cmd}"
 
         # Try FIFO first (overlay popup via watcher)
         if POPUP_FIFO.exists():
@@ -139,15 +166,15 @@ def send_popup(
             except OSError:
                 logger.debug("send_popup: FIFO write failed, falling back to direct")
 
-        # Fallback: direct Popen (opens as new window, not overlay)
-        client = _get_client_name()
-        if client is None:
-            logger.warning("send_popup: no tmux client found")
+        # Fallback: split-window targeted at user's active pane
+        pane_id = _get_active_pane_id()
+        if pane_id is None:
+            logger.warning("send_popup: no active pane found")
             return
 
-        logger.info("send_popup: direct fallback for %s (no watcher)", session_name)
+        logger.info("send_popup: direct split-window at %s for %s", pane_id, session_name)
         subprocess.Popen(
-            ["tmux", "display-popup", "-t", client, "-w", "90%", "-h", "90%", "-E", popup_cmd],
+            ["tmux", "split-window", "-t", pane_id, "-v", "-l", "30%", popup_cmd],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
@@ -194,8 +221,24 @@ def run_popup_watcher() -> None:
                     if not cmd:
                         continue
                     try:
-                        logger.debug("popup watcher executing: %s", cmd[:80])
-                        subprocess.run(cmd, shell=True, timeout=30)
+                        if cmd.startswith("POPUP:"):
+                            popup_cmd = cmd[6:]  # strip POPUP: prefix
+                            # Use split-window targeted at the user's exact active
+                            # pane ID — not session name, which may resolve to a
+                            # different window than what the user sees.
+                            pane_id = _get_active_pane_id()
+                            if pane_id:
+                                subprocess.run(
+                                    ["tmux", "split-window", "-t", pane_id,
+                                     "-v", "-l", "30%", popup_cmd],
+                                    timeout=30,
+                                )
+                                logger.debug("popup watcher: split-window at %s", pane_id)
+                            else:
+                                logger.warning("popup watcher: no active pane found")
+                        else:
+                            logger.debug("popup watcher executing: %s", cmd[:80])
+                            subprocess.run(cmd, shell=True, timeout=30)
                     except Exception:
                         logger.exception("popup watcher: command failed")
     finally:
