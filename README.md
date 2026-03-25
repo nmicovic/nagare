@@ -15,6 +15,7 @@ When you run multiple AI agents across tmux sessions, nagare gives you:
 - **Quick actions** — approve permissions, kill sessions, rename, and create new sessions without leaving the picker
 - **Session manager** (`Ctrl+s`) — persistent registry of your projects, load/unload sessions in bulk
 - **Token tracking** — per-session and total token usage from Claude Code transcripts
+- **Agent messaging** — send messages between Claude Code sessions via MCP server
 
 ## Supported agents
 
@@ -34,7 +35,7 @@ git clone git@github.com:nmicovic/nagare.git
 cd nagare
 uv sync
 
-# Install hooks and plugins
+# Install hooks, MCP server, and plugins
 uv run nagare setup
 ```
 
@@ -80,6 +81,7 @@ The main interface. Two views:
 | `Ctrl+o` | Cycle sort (status/name/agent) |
 | `Ctrl+e` | Open config in editor |
 | `Ctrl+t` | Cycle theme |
+| `Ctrl+b` | Agent mailbox (message history) |
 | `Ctrl+p` | Command palette (search all actions) |
 | `F1` | Help |
 | `Esc` | Close |
@@ -126,6 +128,40 @@ Two tabs:
 
 - **Notifications** — view, dismiss, jump to sessions
 - **Settings** — toggle notification methods interactively
+
+### Agent messaging
+
+Send messages between Claude Code sessions. One agent can ask another agent a question and get a response — useful when frontend and backend agents need to coordinate.
+
+Powered by a nagare MCP server that `nagare setup` registers automatically. Each Claude Code session gets access to messaging tools.
+
+**MCP tools:**
+
+| Tool | Description |
+|------|-------------|
+| `list_agents` | List available sessions with status |
+| `send_message` | Fire-and-forget message |
+| `send_message_and_wait` | Send and block until response |
+| `check_messages` | Check inbox + late responses |
+| `reply` | Respond to a message |
+
+**Slash commands** (available in any Claude Code session):
+
+| Command | Usage |
+|---------|-------|
+| `/nagare-ls` | List available agents |
+| `/nagare-send` | `/nagare-send cosmiclab-backend Check the API docs` |
+| `/nagare-send-wait` | `/nagare-send-wait cosmiclab-backend Give me the API docs` |
+| `/nagare-inbox` | Check inbox and late responses |
+
+**Mailbox viewer** (`Ctrl+b` in picker) — split-pane view with filter, compact message list, and full markdown-rendered detail panel.
+
+**How it works:**
+1. Sender calls `send_message` or `send_message_and_wait`
+2. Message is written to `~/.local/share/nagare/messages/<target>/`
+3. `tmux send-keys` nudges the target agent (must be IDLE)
+4. Target calls `check_messages`, reads the request, calls `reply`
+5. Sender receives the response (or picks it up later via `check_messages`)
 
 ## Configuration
 
@@ -177,6 +213,8 @@ OpenCode plugin  → state files ↗
 
 Picker poll (2s) → scan sessions → update list/grid
 Preview poll (configurable) → tmux capture-pane → live preview
+
+MCP server (per session) → message files → tmux send-keys → target agent
 ```
 
 Key components:
@@ -186,6 +224,7 @@ Key components:
 - **OpenCode plugin** — TypeScript plugin writes state files in the same format
 - **State reader** — resolves conflicts when multiple sessions share the same project path
 - **Notification delivery** — toast, bell, OS notify, popup with FIFO watcher for overlay support
+- **MCP server** — per-session stdio server for inter-agent messaging via file-based mailbox
 
 ## Development
 
