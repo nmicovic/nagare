@@ -14,7 +14,7 @@ from textual.binding import Binding
 from textual.command import Provider, Hits, Hit, DiscoveryHit
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.timer import Timer
-from textual.widgets import Input, ListView, ListItem, ProgressBar, Rule, Static
+from textual.widgets import Input, ListView, ListItem, Markdown, ProgressBar, Rule, Static
 
 from nagare.config import AnimationConfig, load_config, save_theme
 import nagare.icons as _icons_mod
@@ -24,8 +24,23 @@ from nagare.history import load_conversation_topics
 from nagare.models import Session, SessionStatus
 from nagare.state import mark_path_dead
 from nagare.themes import THEMES
-from nagare.tmux import run_tmux
+from nagare.tmux import run_tmux, switch_to_session
 from nagare.tmux.scanner import scan_sessions
+
+
+# Keys the picker handles globally — Input must not consume them
+_PICKER_CTRL_KEYS = frozenset(
+    f"ctrl+{c}" for c in "abdefnorstuwxy"
+)
+
+
+class _PickerInput(Input):
+    """Input that passes ctrl combos through to the app."""
+
+    async def _on_key(self, event) -> None:
+        if event.key in _PICKER_CTRL_KEYS:
+            return  # let it bubble up to the app
+        await super()._on_key(event)
 
 _STATUS_SORT = {
     SessionStatus.WAITING_INPUT: 0,
@@ -71,6 +86,7 @@ _HELP_TEXT = """\
   [b]Ctrl+o[/b]       Cycle sort: status → name → agent
 
 [b]Settings[/b]
+  [b]Ctrl+b[/b]       Agent messages
   [b]Ctrl+e[/b]       Open config in editor
   [b]Ctrl+t[/b]       Cycle color theme
 
@@ -428,6 +444,9 @@ class PickerApp(App):
         self._show_saved = False
         self._saved_sessions: list = []  # RegisteredSession objects
         self._help_visible = False
+        self._messages_visible = False
+        self._all_messages: list[dict] = []
+        self._filtered_messages: list[dict] = []
         self._view_mode = "list"  # "list" or "grid"
         self._grid_selected = 0  # Index in _filtered_sessions for grid
         self._grid_generation = 0  # Increments each rebuild to avoid duplicate IDs
@@ -437,7 +456,7 @@ class PickerApp(App):
 
     def compose(self) -> ComposeResult:
         yield Static(id="title-bar")
-        yield Input(placeholder="Search sessions...", id="search")
+        yield _PickerInput(placeholder="Search sessions...", id="search")
         # List view (default)
         with Horizontal(id="list-view"):
             with Vertical(id="left-panel"):
@@ -453,6 +472,15 @@ class PickerApp(App):
         yield VerticalScroll(id="grid-view")
         # Help overlay (hidden initially)
         yield Static(_HELP_TEXT, id="help-overlay")
+        # Messages overlay (hidden initially)
+        with Vertical(id="messages-overlay"):
+            yield _PickerInput(placeholder="Filter messages by session name...", id="msg-filter")
+            with Horizontal(id="msg-layout"):
+                yield ListView(id="msg-list")
+                with VerticalScroll(id="msg-detail"):
+                    yield Static(id="msg-detail-header")
+                    yield Markdown(id="msg-detail-content")
+                    yield Markdown(id="msg-detail-response")
         yield Static(id="hint-bar")
 
     def on_exception(self, error: Exception) -> None:
@@ -483,6 +511,7 @@ class PickerApp(App):
         # Hide grid view and help initially
         self.query_one("#grid-view").display = False
         self.query_one("#help-overlay").display = False
+        self.query_one("#messages-overlay").display = False
         self.call_after_refresh(self._deferred_init)
 
     def _deferred_init(self) -> None:
@@ -895,6 +924,9 @@ class PickerApp(App):
             logger.exception("on_app_focus failed")
 
     def on_input_changed(self, event: Input.Changed) -> None:
+        if self._messages_visible and event.input.id == "msg-filter":
+            self._filter_messages(event.value)
+            return
         if not self._rename_mode:
             self._apply_filter()
 
@@ -1092,8 +1124,12 @@ class PickerApp(App):
 
     def _do_jump(self, target: str) -> None:
         """Actually switch to the tmux session and exit."""
-        run_tmux("switch-client", "-t", target)
-        self.exit()
+        if os.environ.get("TMUX"):
+            switch_to_session(target)
+            self.exit()
+        else:
+            # Outside tmux: return target name, let main() attach after app exits
+            self.exit(result=f"attach:{target}")
 
     def _jump_to_highlighted(self) -> None:
         # Check if we're on a saved session
@@ -1159,6 +1195,7 @@ class PickerApp(App):
         "ctrl+n": "_new_session",
         "ctrl+r": "_quick_prototype",
         "ctrl+e": "_open_config",
+        "ctrl+b": "_toggle_messages",
         "f2": "_rename_session",
     }
 
@@ -1185,6 +1222,24 @@ class PickerApp(App):
             self._toggle_help()
             event.prevent_default()
             event.stop()
+            return
+        # Messages overlay key handling
+        if self._messages_visible:
+            if event.key in ("ctrl+b", "escape"):
+                self._toggle_messages()
+                event.prevent_default()
+                event.stop()
+            elif event.key in ("down", "up"):
+                lv = self.query_one("#msg-list", ListView)
+                if event.key == "down":
+                    lv.action_cursor_down()
+                else:
+                    lv.action_cursor_up()
+                idx = lv.index
+                if idx is not None and 0 <= idx < len(self._filtered_messages):
+                    self._show_msg_detail(self._filtered_messages[idx])
+                event.prevent_default()
+                event.stop()
             return
 
         method_name = self._KEY_DISPATCH.get(event.key)
@@ -1340,6 +1395,137 @@ class PickerApp(App):
                 self.query_one("#list-view").display = True
             else:
                 self.query_one("#grid-view").display = True
+
+    def _toggle_messages(self) -> None:
+        """Show/hide the messages overlay."""
+        self._messages_visible = not self._messages_visible
+        overlay = self.query_one("#messages-overlay")
+        overlay.display = self._messages_visible
+        if self._messages_visible:
+            self.query_one("#help-overlay").display = False
+            self._help_visible = False
+            self.query_one("#list-view").display = False
+            self.query_one("#grid-view").display = False
+            self.query_one("#search").display = False
+            self._load_messages()
+            self._filter_messages("")
+            msg_filter = self.query_one("#msg-filter", Input)
+            msg_filter.value = ""
+            msg_filter.focus()
+        else:
+            self.query_one("#search").display = True
+            if self._view_mode == "list":
+                self.query_one("#list-view").display = True
+            else:
+                self.query_one("#grid-view").display = True
+            self.query_one("#search", Input).focus()
+
+    def _load_messages(self) -> None:
+        """Load all messages from disk."""
+        from pathlib import Path
+        messages_dir = Path.home() / ".local" / "share" / "nagare" / "messages"
+        self._all_messages = []
+        if messages_dir.exists():
+            import json
+            for session_dir in messages_dir.iterdir():
+                if not session_dir.is_dir():
+                    continue
+                for f in session_dir.glob("msg_*.json"):
+                    try:
+                        self._all_messages.append(json.loads(f.read_text()))
+                    except (OSError, json.JSONDecodeError):
+                        continue
+        self._all_messages.sort(key=lambda m: m.get("created_at", ""), reverse=True)
+
+    def _filter_messages(self, query: str) -> None:
+        """Filter messages by session name and rebuild the list."""
+        q = query.lower().strip()
+        if q:
+            self._filtered_messages = [
+                m for m in self._all_messages
+                if q in m.get("from_session", "").lower()
+                or q in m.get("to_session", "").lower()
+            ]
+        else:
+            self._filtered_messages = list(self._all_messages)
+        self._rebuild_msg_list()
+        # Select first message
+        lv = self.query_one("#msg-list", ListView)
+        if self._filtered_messages:
+            lv.index = 0
+            self._show_msg_detail(self._filtered_messages[0])
+        else:
+            self._clear_msg_detail()
+
+    def _rebuild_msg_list(self) -> None:
+        """Rebuild the message ListView with compact items."""
+        lv = self.query_one("#msg-list", ListView)
+        lv.clear()
+        for msg in self._filtered_messages:
+            status = msg.get("status", "unknown")
+            sender = msg.get("from_session", "?")
+            receiver = msg.get("to_session", "?")
+            ts = msg.get("created_at", "")[:16].replace("T", " ")
+            preview = msg.get("content", "")[:60].replace("\n", " ")
+            if len(msg.get("content", "")) > 60:
+                preview += "…"
+
+            if status == "completed":
+                icon = "[#00D26A]●[/]"
+            elif status == "delivered":
+                icon = "[#e0af68]●[/]"
+            else:
+                icon = "[#db4b4b]●[/]"
+
+            label = (
+                f"{icon} [b #da7756]{sender}[/] → [b #7aa2f7]{receiver}[/]  [dim]{ts}[/dim]\n"
+                f"  [dim]{preview}[/dim]"
+            )
+            lv.append(ListItem(Static(label), classes="msg-item"))
+
+        if not self._filtered_messages:
+            lv.append(ListItem(Static("[dim]No messages match filter.[/dim]")))
+
+    def _show_msg_detail(self, msg: dict) -> None:
+        """Show full message detail in the right panel."""
+        status = msg.get("status", "unknown")
+        sender = msg.get("from_session", "?")
+        receiver = msg.get("to_session", "?")
+        ts = msg.get("created_at", "")[:16].replace("T", " ")
+
+        if status == "completed":
+            badge = "[#00D26A]● completed[/]"
+        elif status == "delivered":
+            badge = "[#e0af68]● awaiting response[/]"
+        else:
+            badge = "[#db4b4b]● pending[/]"
+
+        header = (
+            f"{badge}\n"
+            f"[b #da7756]{sender}[/] → [b #7aa2f7]{receiver}[/]\n"
+            f"[dim]{ts}[/dim]"
+        )
+        self.query_one("#msg-detail-header", Static).update(header)
+
+        # Message content
+        content_md = self.query_one("#msg-detail-content", Markdown)
+        content_md.update(msg.get("content", ""))
+        content_md.display = True
+
+        # Response
+        response_md = self.query_one("#msg-detail-response", Markdown)
+        if status == "completed" and msg.get("response"):
+            resp_ts = msg.get("responded_at", "")[:16].replace("T", " ")
+            response_md.update(f"**Response** _{resp_ts}_\n\n---\n\n{msg['response']}")
+            response_md.display = True
+        else:
+            response_md.display = False
+
+    def _clear_msg_detail(self) -> None:
+        """Clear the detail panel."""
+        self.query_one("#msg-detail-header", Static).update("[dim]No message selected[/dim]")
+        self.query_one("#msg-detail-content", Markdown).update("")
+        self.query_one("#msg-detail-response", Markdown).update("")
 
     def _new_session(self) -> None:
         """Exit picker with a signal to open the new-session form."""
@@ -1540,7 +1726,7 @@ class PickerApp(App):
         row2 = (
             f" [#7aa2f7][b]Ctrl+s[/b] {saved_label}  [b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]{saved_extra}"
             f"  [b]Ctrl+o[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
-            f"  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Ctrl+p[/b] Commands"
+            f"  [b]Ctrl+b[/b] Mailbox  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Ctrl+p[/b] Commands"
             f"  [b]F1[/b] Help  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )

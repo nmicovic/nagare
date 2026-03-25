@@ -6,6 +6,7 @@ from nagare.config import NagareConfig, load_config, CONFIG_PATH
 
 DATA_DIR = Path.home() / ".local" / "share" / "nagare"
 CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+CLAUDE_JSON_PATH = Path.home() / ".claude.json"
 OPENCODE_PLUGIN_DIR = Path.home() / ".config" / "opencode" / "plugin"
 OPENCODE_PLUGIN_SRC = Path(__file__).resolve().parent / "opencode_plugin.ts"
 
@@ -170,6 +171,31 @@ def _install_hooks() -> bool:
     return True
 
 
+def _install_mcp_server() -> bool:
+    """Register the nagare MCP server in ~/.claude.json for inter-agent messaging."""
+    if not CLAUDE_JSON_PATH.exists():
+        print(f"Claude Code config not found at {CLAUDE_JSON_PATH}")
+        return False
+
+    try:
+        data = json.loads(CLAUDE_JSON_PATH.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Failed to read {CLAUDE_JSON_PATH}: {e}")
+        return False
+
+    nagare_project = str(Path(__file__).resolve().parents[2])
+    uv_bin = shutil.which("uv") or "uv"
+
+    mcp_servers = data.setdefault("mcpServers", {})
+    mcp_servers["nagare"] = {
+        "command": uv_bin,
+        "args": ["run", "--project", nagare_project, "python", "-m", "nagare.mcp_server"],
+    }
+
+    CLAUDE_JSON_PATH.write_text(json.dumps(data, indent=2))
+    return True
+
+
 def _install_opencode_plugin() -> bool:
     """Copy the nagare plugin into OpenCode's plugin directory."""
     if not OPENCODE_PLUGIN_SRC.exists():
@@ -200,6 +226,13 @@ def run_setup() -> None:
         print("Hooks installed in ~/.claude/settings.json")
     else:
         print("Could not install hooks automatically.")
+
+    # Install MCP server for inter-agent messaging
+    print("\nInstalling nagare MCP server...")
+    if _install_mcp_server():
+        print("MCP server registered in ~/.claude.json")
+    else:
+        print("Could not install MCP server automatically.")
 
     # Install OpenCode plugin
     print("\nInstalling OpenCode plugin...")

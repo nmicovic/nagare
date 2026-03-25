@@ -202,6 +202,59 @@ ListItem.-highlight {
     color: $foreground;
 }
 
+/* ── Messages overlay ── */
+
+#messages-overlay {
+    height: 1fr;
+    background: $surface;
+    color: $foreground;
+}
+
+#msg-filter {
+    margin: 0 1;
+}
+
+#msg-layout {
+    height: 1fr;
+}
+
+#msg-list {
+    width: 40%;
+    min-width: 30;
+    border-right: solid $accent 50%;
+    padding: 0 1;
+}
+
+#msg-list > .msg-item {
+    padding: 0 1;
+    height: 3;
+}
+
+#msg-list > .msg-item.--highlight {
+    background: $accent 20%;
+}
+
+#msg-detail {
+    width: 60%;
+    padding: 0 2;
+}
+
+#msg-detail-header {
+    padding: 1 0;
+}
+
+#msg-detail-content {
+    border-left: thick $accent;
+    padding: 0 1;
+    margin: 0 0 1 1;
+}
+
+#msg-detail-response {
+    border-left: thick #00D26A;
+    padding: 0 1;
+    margin: 0 0 1 1;
+}
+
 /* ── Hint bar ── */
 
 #hint-bar {

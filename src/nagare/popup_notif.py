@@ -12,7 +12,7 @@ from textual.widgets import Static
 from nagare.config import load_config
 from nagare.log import logger
 from nagare.themes import THEMES
-from nagare.tmux import run_tmux
+from nagare.tmux import run_tmux, switch_to_session
 
 # Strip ANSI background color sequences that clash with Textual themes
 _BG_COLOR_RE = re.compile(r"\x1b\[(?:48;[25](?:;[\d]+)*|49)m")
@@ -151,7 +151,7 @@ class PopupNotifApp(App):
 
     def action_jump(self) -> None:
         try:
-            run_tmux("switch-client", "-t", self._session_name)
+            switch_to_session(self._session_name)
         except Exception:
             pass
         self.exit()

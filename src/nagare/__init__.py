@@ -10,6 +10,7 @@ def main() -> None:
     command = args[0] if args else "pick"
 
     if command == "pick":
+        attach_target = None
         while True:
             from nagare.pick import PickerApp
             app = PickerApp()
@@ -26,8 +27,15 @@ def main() -> None:
                 if form_result == "back_to_picker":
                     continue
                 break
+            elif isinstance(result, str) and result.startswith("attach:"):
+                attach_target = result.removeprefix("attach:")
+                break
             else:
                 break
+        # Outside tmux: attach after app has fully exited
+        if attach_target:
+            import subprocess
+            subprocess.run(["tmux", "attach-session", "-t", attach_target])
     elif command == "notifs":
         from nagare.notifs import NotifsApp
         app = NotifsApp()
@@ -58,8 +66,8 @@ def main() -> None:
                     agent=parsed.agent,
                     continue_session=parsed.continue_session,
                 )
-                from nagare.tmux import run_tmux
-                run_tmux("switch-client", "-t", name)
+                from nagare.tmux import switch_to_session
+                switch_to_session(name)
                 print(f"Created session: {name}")
             except (ValueError, RuntimeError) as e:
                 print(f"Error: {e}")

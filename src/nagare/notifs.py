@@ -15,7 +15,7 @@ from nagare.config import (
 )
 from nagare.notifications.store import NotificationStore
 from nagare.themes import THEMES
-from nagare.tmux import run_tmux
+from nagare.tmux import run_tmux, switch_to_session
 
 STORE_PATH = Path.home() / ".local" / "share" / "nagare" / "notifications.json"
 
@@ -203,7 +203,7 @@ class NotifsApp(App):
         if idx is not None and 0 <= idx < len(notifs):
             notif = notifs[idx]
             self._store.mark_read(notif.id)
-            run_tmux("switch-client", "-t", notif.session_name)
+            switch_to_session(notif.session_name)
             self.exit()
 
     def _handle_setting_toggle(self, lv: ListView) -> None:

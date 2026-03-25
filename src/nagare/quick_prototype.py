@@ -11,7 +11,7 @@ from nagare.config import load_config
 from nagare.log import logger
 from nagare.session import create_session
 from nagare.themes import THEMES
-from nagare.tmux import run_tmux
+from nagare.tmux import run_tmux, switch_to_session
 
 
 class QuickPrototypeApp(App):
@@ -87,7 +87,7 @@ class QuickPrototypeApp(App):
                 agent=agent,
                 continue_session=False,
             )
-            run_tmux("switch-client", "-t", session_name)
+            switch_to_session(session_name)
             self.exit()
         except (ValueError, RuntimeError) as e:
             logger.exception("Quick prototype failed")

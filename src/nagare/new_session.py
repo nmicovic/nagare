@@ -11,7 +11,7 @@ from nagare.config import load_config
 from nagare.log import logger
 from nagare.session import create_session, list_directories
 from nagare.themes import THEMES
-from nagare.tmux import run_tmux
+from nagare.tmux import run_tmux, switch_to_session
 
 
 class NewSessionForm(Vertical):
@@ -185,7 +185,7 @@ class NewSessionApp(App):
 
         try:
             name = create_session(**values)
-            run_tmux("switch-client", "-t", name)
+            switch_to_session(name)
             self.exit()
         except (ValueError, RuntimeError) as e:
             logger.exception("Failed to create session")
