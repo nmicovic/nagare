@@ -966,11 +966,14 @@ class PickerApp(App):
         reg = SessionRegistry()
         starred_names = {s.name for s in reg.list_all() if s.starred}
 
-        # Sort: starred first, then by current sort mode
-        if starred_names:
-            self._filtered_sessions.sort(
-                key=lambda s: (0 if s.name in starred_names else 1,)
+        # Sort: NEEDS INPUT always first, then starred, then by status
+        self._filtered_sessions.sort(
+            key=lambda s: (
+                0 if s.status == SessionStatus.WAITING_INPUT else 1,
+                0 if s.name in starred_names else 1,
+                _STATUS_SORT.get(s.status, 99),
             )
+        )
 
         # Active sessions
         if self._filtered_sessions:
