@@ -14,7 +14,7 @@ from textual.binding import Binding
 from textual.command import Provider, Hits, Hit, DiscoveryHit
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.timer import Timer
-from textual.widgets import Input, ListView, ListItem, Markdown, ProgressBar, Rule, Static
+from textual.widgets import Input, ListView, ListItem, Markdown, ProgressBar, Rule, Static, TextArea
 
 from nagare.config import AnimationConfig, load_config, save_theme
 import nagare.icons as _icons_mod
@@ -30,7 +30,7 @@ from nagare.tmux.scanner import scan_sessions
 
 # Keys the picker handles globally — Input must not consume them
 _PICKER_CTRL_KEYS = frozenset(
-    f"ctrl+{c}" for c in "abdefnorstuwxy"
+    f"ctrl+{c}" for c in "abdefglnorstuwxy"
 )
 
 
@@ -41,6 +41,23 @@ class _PickerInput(Input):
         if event.key in _PICKER_CTRL_KEYS:
             return  # let it bubble up to the app
         await super()._on_key(event)
+
+
+class _PromptArea(TextArea):
+    """TextArea where Enter sends. Shift+Enter / Ctrl+j for newline."""
+
+    def on_key(self, event) -> None:
+        if event.key == "ctrl+j":
+            # Ctrl+Enter (terminal sends ctrl+j) → insert newline
+            self.insert("\n")
+            event.prevent_default()
+            event.stop()
+            return
+        if event.key == "enter":
+            event.prevent_default()
+            event.stop()
+            self.app._send_prompt()
+            return
 
 _STATUS_SORT = {
     SessionStatus.WAITING_INPUT: 0,
@@ -77,6 +94,8 @@ _HELP_TEXT = """\
   [b]Ctrl+r[/b]       Quick prototype
   [b]Ctrl+f[/b]       Star/unstar session (pinned to top)
   [b]F2[/b]            Rename session
+  [b]Ctrl+l[/b]       Send prompt to highlighted session
+  [b]Ctrl+g[/b]       Send prompt via $EDITOR
   [b]Ctrl+w[/b]       Unload agent (kill pane, keep in saved)
   [b]Ctrl+x[/b]       Kill entire tmux session
   [b]Esc[/b]          Close picker
@@ -447,6 +466,7 @@ class PickerApp(App):
         self._messages_visible = False
         self._all_messages: list[dict] = []
         self._filtered_messages: list[dict] = []
+        self._prompt_mode = False
         self._view_mode = "list"  # "list" or "grid"
         self._grid_selected = 0  # Index in _filtered_sessions for grid
         self._grid_generation = 0  # Increments each rebuild to avoid duplicate IDs
@@ -481,6 +501,12 @@ class PickerApp(App):
                     yield Static(id="msg-detail-header")
                     yield Markdown(id="msg-detail-content")
                     yield Markdown(id="msg-detail-response")
+        # Prompt overlay (hidden initially)
+        with Vertical(id="prompt-overlay"):
+            with Vertical(id="prompt-card"):
+                yield Static(id="prompt-target")
+                yield _PromptArea(language="markdown", id="prompt-input")
+                yield Static("[dim]  Enter send · Ctrl+Enter newline · Esc cancel[/]", id="prompt-hints")
         yield Static(id="hint-bar")
 
     def on_exception(self, error: Exception) -> None:
@@ -512,6 +538,7 @@ class PickerApp(App):
         self.query_one("#grid-view").display = False
         self.query_one("#help-overlay").display = False
         self.query_one("#messages-overlay").display = False
+        self.query_one("#prompt-overlay").display = False
         self.call_after_refresh(self._deferred_init)
 
     def _deferred_init(self) -> None:
@@ -1242,6 +1269,31 @@ class PickerApp(App):
                 event.stop()
             return
 
+        # Prompt mode key handling
+        if self._prompt_mode:
+            if event.key == "escape":
+                self._close_prompt()
+                event.prevent_default()
+                event.stop()
+            # All other keys go to the TextArea
+            return
+
+        logger.info("on_key: key=%r character=%r", event.key, event.character)
+
+        # "Ctrl+g" opens $EDITOR prompt
+        if event.key == "ctrl+g" and not self._rename_mode:
+            self._open_editor_prompt()
+            event.prevent_default()
+            event.stop()
+            return
+
+        # "Ctrl+l" opens inline prompt
+        if event.key == "ctrl+l" and not self._rename_mode:
+            self._open_prompt()
+            event.prevent_default()
+            event.stop()
+            return
+
         method_name = self._KEY_DISPATCH.get(event.key)
         if method_name is not None:
             getattr(self, method_name)()
@@ -1527,6 +1579,105 @@ class PickerApp(App):
         self.query_one("#msg-detail-content", Markdown).update("")
         self.query_one("#msg-detail-response", Markdown).update("")
 
+    def _open_prompt(self) -> None:
+        """Open the prompt bar to send a command to the highlighted session."""
+        try:
+            session = self._get_highlighted_session()
+            if not session:
+                logger.warning("open_prompt: no highlighted session")
+                return
+            logger.info("open_prompt: target=%s", session.name)
+            self._prompt_mode = True
+            self.query_one("#list-view").display = False
+            self.query_one("#grid-view").display = False
+            self.query_one("#search").display = False
+            self.query_one("#hint-bar").display = False
+            self.query_one("#prompt-overlay").display = True
+            target_label = self.query_one("#prompt-target", Static)
+            target_label.update(
+                f"  [b]Send prompt to:[/b] [bold #da7756]{session.name}[/]"
+            )
+            ta = self.query_one("#prompt-input", TextArea)
+            ta.clear()
+            ta.focus()
+            logger.info("open_prompt: prompt bar shown")
+        except Exception:
+            logger.exception("open_prompt failed")
+
+    def _close_prompt(self) -> None:
+        """Close the prompt bar."""
+        self._prompt_mode = False
+        self.query_one("#prompt-overlay").display = False
+        self.query_one("#search").display = True
+        self.query_one("#hint-bar").display = True
+        if self._view_mode == "list":
+            self.query_one("#list-view").display = True
+        else:
+            self.query_one("#grid-view").display = True
+        self.query_one("#search", Input).focus()
+
+    def _send_prompt(self) -> None:
+        """Send the prompt text to the highlighted session via tmux send-keys."""
+        session = self._get_highlighted_session()
+        ta = self.query_one("#prompt-input", TextArea)
+        text = ta.text.strip()
+        if not session or not text:
+            self._close_prompt()
+            return
+
+        pane_target = f"{session.name}:{session.window_index}.{session.pane_index}"
+        # Send each line separately to handle multiline prompts
+        lines = text.split("\n")
+        for i, line in enumerate(lines):
+            if i < len(lines) - 1:
+                # Intermediate lines: send without Enter (use C-j for newline in Claude)
+                run_tmux("send-keys", "-t", pane_target, line, "")
+                run_tmux("send-keys", "-t", pane_target, "Enter", "")
+            else:
+                # Last line: send with Enter to execute
+                run_tmux("send-keys", "-t", pane_target, line, "Enter")
+
+        logger.info("prompt sent to %s: %s", session.name, text[:80])
+        self._close_prompt()
+
+    def _open_editor_prompt(self) -> None:
+        """Open $EDITOR to compose a prompt, then send it to the highlighted session."""
+        import subprocess
+        import tempfile
+        session = self._get_highlighted_session()
+        if not session:
+            return
+        editor = os.environ.get("EDITOR", "vim")
+        pane_target = f"{session.name}:{session.window_index}.{session.pane_index}"
+
+        with tempfile.NamedTemporaryFile(suffix=".md", mode="w", delete=False) as f:
+            # Write a comment header so the user knows the context
+            f.write(f"")
+            tmppath = f.name
+
+        try:
+            with self.suspend():
+                subprocess.run([editor, tmppath])
+
+            text = open(tmppath).read().strip()
+            if text:
+                lines = text.split("\n")
+                for i, line in enumerate(lines):
+                    if i < len(lines) - 1:
+                        run_tmux("send-keys", "-t", pane_target, line, "")
+                        run_tmux("send-keys", "-t", pane_target, "Enter", "")
+                    else:
+                        run_tmux("send-keys", "-t", pane_target, line, "Enter")
+                logger.info("editor prompt sent to %s: %s", session.name, text[:80])
+                self.notify(f"Sent to {session.name}", severity="information")
+        except Exception:
+            logger.exception("editor prompt failed")
+        finally:
+            try:
+                os.unlink(tmppath)
+            except OSError:
+                pass
+
     def _new_session(self) -> None:
         """Exit picker with a signal to open the new-session form."""
         self.exit(result="new_session")
@@ -1726,7 +1877,7 @@ class PickerApp(App):
         row2 = (
             f" [#7aa2f7][b]Ctrl+s[/b] {saved_label}  [b]Ctrl+n[/b] New  [b]Ctrl+r[/b] Prototype[/]{saved_extra}"
             f"  [b]Ctrl+o[/b] Sort:[b]{sort_label[self._sort_mode]}[/b]"
-            f"  [b]Ctrl+b[/b] Mailbox  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Ctrl+p[/b] Commands"
+            f"  [#bb9af7][b]Ctrl+l[/b] Prompt  [b]Ctrl+g[/b] Editor[/]  [b]Ctrl+b[/b] Mailbox  [b]Ctrl+e[/b] Config  [b]Ctrl+t[/b] Theme  [b]Ctrl+p[/b] Commands"
             f"  [b]F1[/b] Help  [b]Esc[/b] Cancel"
             f"  │  🎨 {name}"
         )
