@@ -88,6 +88,56 @@ shrink_duration = 0.3
 theme = "tokyonight"
 # Icon style: "emoji" (default, colorful) or "ascii" (maximum compatibility)
 icon_style = "emoji"
+
+# ── Sounds (CESP / openpeon) ─────────────────────────────────
+[sounds]
+# Master switch — set to true to enable sound effects
+enabled = false
+# Active sound pack (install with: nagare sounds install <pack>)
+pack = "peon"
+# Master volume (0.0 to 1.0)
+volume = 0.7
+# Per-category toggles
+session_start = true
+task_acknowledge = false  # fires on every prompt, can be noisy
+task_complete = true
+input_required = true
+session_end = false
+
+# Per-session sound pack overrides:
+# [sounds.sessions.cosmiclab-backend]
+# pack = "glados"
+
+# ── Voice (TTS notifications) ────────────────────────────────
+[voice]
+# Master switch — set to true to enable spoken notifications
+enabled = false
+# TTS engine: auto, say (macOS), piper, edge-tts, espeak, wsl-sapi
+engine = "auto"
+# Engine-specific voice name (e.g. "en-US-GuyNeural" for edge-tts)
+voice = ""
+# Speech speed in words per minute
+speed = 160
+# Volume (0.0 to 1.0)
+volume = 0.8
+# Per-category toggles
+session_start = false
+task_acknowledge = false
+task_complete = true
+input_required = true
+session_end = false
+
+# Message templates — use {session} placeholder for the session name
+[voice.templates]
+session_start = "{session} is online"
+task_complete = "{session} finished working"
+input_required = "{session} needs your attention"
+task_error = "{session} hit an error"
+
+# Per-session voice overrides:
+# [voice.sessions.cosmiclab-backend]
+# engine = "edge-tts"
+# voice = "en-GB-SoniaNeural"
 """
 
 

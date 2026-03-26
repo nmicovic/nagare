@@ -78,10 +78,12 @@ The main interface. Two views:
 | `Ctrl+r` | Quick prototype |
 | `Ctrl+w` | Unload agent (kill pane) |
 | `Ctrl+x` | Kill entire tmux session |
+| `Ctrl+l` | Send prompt to highlighted session (inline) |
+| `Ctrl+g` | Send prompt via `$EDITOR` (neovim, etc.) |
 | `Ctrl+o` | Cycle sort (status/name/agent) |
+| `Ctrl+b` | Agent mailbox (message history) |
 | `Ctrl+e` | Open config in editor |
 | `Ctrl+t` | Cycle theme |
-| `Ctrl+b` | Agent mailbox (message history) |
 | `Ctrl+p` | Command palette (search all actions) |
 | `F1` | Help |
 | `Esc` | Close |
@@ -163,6 +165,15 @@ Powered by a nagare MCP server that `nagare setup` registers automatically. Each
 4. Target calls `check_messages`, reads the request, calls `reply`
 5. Sender receives the response (or picks it up later via `check_messages`)
 
+### Remote prompting
+
+Send prompts to any agent session without leaving the picker:
+
+- **`Ctrl+l`** — inline prompt with markdown highlighting. Enter sends, Ctrl+Enter for newlines, Esc cancels.
+- **`Ctrl+g`** — opens `$EDITOR` (e.g. neovim) with a temp `.md` file. Write your prompt, save and quit — content is sent to the agent via `tmux send-keys`.
+
+Both methods send the text directly to the agent's tmux pane as if you typed it yourself.
+
 ## Configuration
 
 Config file: `~/.config/nagare/config.toml`
@@ -197,6 +208,54 @@ jump_animation = "flash"  # flash, pulse, fade, sweep, shrink, none
 
 [appearance]
 theme = "tokyonight"
+
+[sounds]
+enabled = true
+pack = "peon"              # openpeon sound pack name
+volume = 0.7
+
+[voice]
+enabled = true
+engine = "edge-tts"        # auto, say, piper, edge-tts, espeak, wsl-sapi
+voice = "en-US-AriaNeural"
+volume = 0.8
+
+[voice.templates]
+task_complete = "{session} is done"
+input_required = "{session} needs you"
+session_end = "Farewell commander"
+```
+
+### Sound packs (CESP / openpeon)
+
+Play sound effects on agent events using [openpeon](https://openpeon.com) community sound packs — from Warcraft peons to Cartman to GLaDOS.
+
+```bash
+nagare sounds list                    # Show installed packs
+nagare sounds install peon            # Install from registry (100+ packs)
+nagare sounds install southpark_cartman
+nagare sounds test peon               # Play one sound per category
+```
+
+Events: `session.start`, `task.acknowledge`, `task.complete`, `input.required`, `session.end`. Each toggleable in config. Per-session pack overrides supported.
+
+### Voice notifications (TTS)
+
+Speak contextual messages when agents need attention. Auto-detects the best available engine:
+
+| Engine | Quality | Internet | Install |
+|--------|---------|----------|---------|
+| **edge-tts** | Excellent (neural) | Required | `uv add edge-tts` |
+| **piper-tts** | Good (neural) | Offline | `pip install piper-tts` + model |
+| **espeak-ng** | Robotic | Offline | `apt install espeak-ng` |
+| **say** | Good | Offline | Built into macOS |
+
+300+ voices available with edge-tts (`edge-tts --list-voices`). Configure templates with `{session}` placeholder for the session name.
+
+Per-session voice/engine overrides supported:
+```toml
+[voice.sessions.cosmiclab-backend]
+voice = "en-GB-SoniaNeural"
 ```
 
 ## Themes

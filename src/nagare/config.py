@@ -61,9 +61,54 @@ _ANIMATION_DEFAULTS = dict(
 
 
 @dataclass(frozen=True)
+class SoundsConfig:
+    enabled: bool = False
+    pack: str = "peon"
+    volume: float = 0.7
+    session_start: bool = True
+    task_acknowledge: bool = False  # fires on every prompt, can be noisy
+    task_complete: bool = True
+    input_required: bool = True
+    session_end: bool = False
+    sessions: dict[str, dict] = field(default_factory=dict)  # per-session overrides
+
+
+_SOUNDS_DEFAULTS = dict(
+    enabled=False, pack="peon", volume=0.7,
+    session_start=True, task_acknowledge=False, task_complete=True,
+    input_required=True, session_end=False,
+)
+
+
+@dataclass(frozen=True)
+class VoiceConfig:
+    enabled: bool = False
+    engine: str = "auto"  # auto, say, piper, edge-tts, espeak, wsl-sapi
+    voice: str = ""  # engine-specific voice name
+    speed: int = 160  # words per minute
+    volume: float = 0.8
+    session_start: bool = False
+    task_acknowledge: bool = False
+    task_complete: bool = True
+    input_required: bool = True
+    session_end: bool = False
+    templates: dict[str, str] = field(default_factory=dict)
+    sessions: dict[str, dict] = field(default_factory=dict)
+
+
+_VOICE_DEFAULTS = dict(
+    enabled=False, engine="auto", voice="", speed=160, volume=0.8,
+    session_start=False, task_acknowledge=False, task_complete=True,
+    input_required=True, session_end=False,
+)
+
+
+@dataclass(frozen=True)
 class NagareConfig:
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
     animation: AnimationConfig = field(default_factory=AnimationConfig)
+    sounds: SoundsConfig = field(default_factory=SoundsConfig)
+    voice: VoiceConfig = field(default_factory=VoiceConfig)
     notification_duration: int = 3000
     picker_width: str = "80%"
     picker_height: str = "80%"
@@ -117,9 +162,36 @@ def load_config() -> NagareConfig:
     anim_merged = {**_ANIMATION_DEFAULTS, **anim_data}
     animation_config = AnimationConfig(**anim_merged)
 
+    # Parse sounds config
+    sounds_data = data.get("sounds", {})
+    sounds_sessions: dict[str, dict] = {}
+    for sname, sval in sounds_data.get("sessions", {}).items():
+        sounds_sessions[sname] = dict(sval)
+    sounds_merged = {**_SOUNDS_DEFAULTS}
+    for k in _SOUNDS_DEFAULTS:
+        if k in sounds_data and k != "sessions":
+            sounds_merged[k] = sounds_data[k]
+    sounds_config = SoundsConfig(**sounds_merged, sessions=sounds_sessions)
+
+    # Parse voice config
+    voice_data = data.get("voice", {})
+    voice_sessions: dict[str, dict] = {}
+    for sname, sval in voice_data.get("sessions", {}).items():
+        voice_sessions[sname] = dict(sval)
+    voice_templates: dict[str, str] = {}
+    for tname, tval in voice_data.get("templates", {}).items():
+        voice_templates[tname] = str(tval)
+    voice_merged = {**_VOICE_DEFAULTS}
+    for k in _VOICE_DEFAULTS:
+        if k in voice_data and k not in ("sessions", "templates"):
+            voice_merged[k] = voice_data[k]
+    voice_config = VoiceConfig(**voice_merged, templates=voice_templates, sessions=voice_sessions)
+
     return NagareConfig(
         notifications=notification_config,
         animation=animation_config,
+        sounds=sounds_config,
+        voice=voice_config,
         notification_duration=notifs.get("duration", 3000),
         picker_width=picker.get("popup_width", "80%"),
         picker_height=picker.get("popup_height", "80%"),

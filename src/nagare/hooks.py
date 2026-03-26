@@ -182,6 +182,18 @@ def handle_hook() -> None:
     except Exception:
         logger.exception("_maybe_notify failed")
 
+    # Play sound for this event
+    try:
+        _maybe_play_sound(event, state, prev_state_data, cwd)
+    except Exception:
+        logger.exception("_maybe_play_sound failed")
+
+    # Speak voice notification
+    try:
+        _maybe_speak(event, state, prev_state_data, cwd)
+    except Exception:
+        logger.exception("_maybe_speak failed")
+
 
 def _maybe_notify(
     state: str,
@@ -283,3 +295,112 @@ def _is_active_session(session_name: str) -> bool:
         return session_name in active_sessions
     except Exception:
         return False
+
+
+# Hook event → CESP category mapping
+_EVENT_TO_CESP = {
+    "SessionStart": "session.start",
+    "UserPromptSubmit": "task.acknowledge",
+    "SessionEnd": "session.end",
+}
+
+# Category → SoundsConfig attribute name
+_CESP_TO_CONFIG = {
+    "session.start": "session_start",
+    "task.acknowledge": "task_acknowledge",
+    "task.complete": "task_complete",
+    "input.required": "input_required",
+    "session.end": "session_end",
+}
+
+
+def _maybe_play_sound(
+    event: str,
+    state: str,
+    prev_state_data: dict | None,
+    cwd: str,
+) -> None:
+    """Play a CESP sound for this hook event if sounds are enabled."""
+    config = load_config()
+    if not config.sounds.enabled:
+        return
+
+    # Map hook event → CESP category
+    category: str | None = None
+
+    if event in _EVENT_TO_CESP:
+        category = _EVENT_TO_CESP[event]
+    elif state == "waiting_input":
+        category = "input.required"
+    elif state == "idle" and prev_state_data and prev_state_data.get("state") == "working":
+        category = "task.complete"
+
+    if not category:
+        return
+
+    # Check per-category toggle
+    config_attr = _CESP_TO_CONFIG.get(category)
+    if config_attr and not getattr(config.sounds, config_attr, True):
+        return
+
+    # Resolve pack name (per-session override or global default)
+    session_name = _get_session_name(cwd)
+    pack_name = config.sounds.pack
+    if session_name:
+        session_overrides = config.sounds.sessions.get(session_name, {})
+        pack_name = session_overrides.get("pack", pack_name)
+        # Per-session enabled check
+        if not session_overrides.get("enabled", True):
+            return
+
+    from nagare.sounds import play_sound
+    play_sound(pack_name, category, volume=config.sounds.volume)
+
+
+def _maybe_speak(
+    event: str,
+    state: str,
+    prev_state_data: dict | None,
+    cwd: str,
+) -> None:
+    """Speak a voice notification for this hook event if voice is enabled."""
+    config = load_config()
+    if not config.voice.enabled:
+        return
+
+    # Map hook event → CESP category (same mapping as sounds)
+    category: str | None = None
+
+    if event in _EVENT_TO_CESP:
+        category = _EVENT_TO_CESP[event]
+    elif state == "waiting_input":
+        category = "input.required"
+    elif state == "idle" and prev_state_data and prev_state_data.get("state") == "working":
+        category = "task.complete"
+
+    if not category:
+        return
+
+    # Check per-category toggle
+    config_attr = _CESP_TO_CONFIG.get(category)
+    if config_attr and not getattr(config.voice, config_attr, True):
+        return
+
+    session_name = _get_session_name(cwd) or cwd
+
+    # Per-session overrides
+    session_overrides = config.voice.sessions.get(session_name, {}) if session_name else {}
+    if not session_overrides.get("enabled", True):
+        return
+
+    from nagare.voice import get_voice_engine
+    engine = get_voice_engine()
+    engine.engine = session_overrides.get("engine", config.voice.engine)
+    engine.voice = session_overrides.get("voice", config.voice.voice)
+    engine.speed = config.voice.speed
+    engine.volume = config.voice.volume
+    # Merge templates: defaults → config → per-session
+    from nagare.voice import DEFAULT_TEMPLATES
+    templates = {**DEFAULT_TEMPLATES, **config.voice.templates}
+    engine.templates = templates
+    engine.speak(category, session_name)

@@ -10,7 +10,7 @@ The core workflow: the user runs many AI agent instances across tmux sessions si
 
 ### Systems
 
-- **Picker (`pick.py`, `pick.tcss`)** — The main TUI. Split-pane layout: left side has a searchable session list + dashboard stats, right side has session details + live-streaming tmux pane preview. Launched as a fullscreen tmux popup. Refreshes session states every 2s and preview every 1s.
+- **Picker (`pick.py`, `pick.tcss`)** — The main TUI. Split-pane layout: left side has a searchable session list + dashboard stats, right side has session details + live-streaming tmux pane preview. Launched as a fullscreen tmux popup. Refreshes session states every 2s and preview every 1s. Features: inline prompt (Ctrl+l), $EDITOR prompt (Ctrl+g), agent mailbox viewer (Ctrl+b), command palette (Ctrl+p).
 
 - **Hook Handler (`hooks.py`)** — Receives Claude Code lifecycle events (UserPromptSubmit, Stop, Notification, PreToolUse, SessionStart, SessionEnd) via stdin JSON. Writes state files to `~/.local/share/nagare/states/<session_id>.json`. Determines notification event type (`needs_input` or `task_complete`), loads config, resolves per-session overrides, and dispatches to delivery functions. Cleans up stale dead state files on new session start.
 
@@ -40,6 +40,8 @@ The core workflow: the user runs many AI agent instances across tmux sessions si
 
 - **Themes (`themes.py`)** — Multiple tokyonight variants + other themes. Cyclable with `Ctrl+t` in picker.
 
+- **MCP Server (`mcp_server.py`)** — stdio-based MCP server (FastMCP) spawned by Claude Code per session. Provides inter-agent messaging: `list_agents`, `send_message`, `send_message_and_wait`, `check_messages`, `reply`. Messages stored as JSON in `~/.local/share/nagare/messages/<target>/`. Delivery via `tmux send-keys` (target must be IDLE). Registered in `~/.claude.json` by `nagare setup`.
+
 - **OpenCode Plugin (`opencode_plugin.ts`)** — TypeScript plugin for OpenCode that writes state files in the same format as Claude hooks. Installed to `~/.config/opencode/plugin/nagare.ts` by `nagare setup`.
 
 ### State Flow
@@ -54,6 +56,9 @@ OpenCode plugin → event handler → state files (same JSON format)
 
 Picker poll (2s) → scanner.py → state.py (read state files) → UI update
 Picker poll (1s) → tmux capture-pane → preview panel update
+
+MCP server (per session) → message JSON files → tmux send-keys → target agent
+Picker Ctrl+l / Ctrl+g → tmux send-keys → target agent pane
 ```
 
 ### Notification Events
@@ -73,7 +78,7 @@ Picker poll (1s) → tmux capture-pane → preview panel update
 - **Language:** Python (3.14+)
 - **Project Manager:** `uv` — use `uv` for all dependency management, virtual environments, and running scripts. Do NOT use pip or poetry.
 - **TUI Framework:** [Textual](https://textual.textualize.io/) — core framework for all UI. Uses its own CSS dialect for layout/theming, Rich markup for styled text, message passing for events, `set_interval` for polling.
-- **Core Dependencies:** `tmux`, `claude` (Claude Code CLI), Unix shell
+- **Core Dependencies:** `tmux`, `claude` (Claude Code CLI), `mcp` (MCP Python SDK), Unix shell
 
 ## User Preferences
 
@@ -88,7 +93,7 @@ Picker poll (1s) → tmux capture-pane → preview panel update
 - `nagare pick` (default) — open the session picker TUI
 - `nagare notifs` — open the notification center
 - `nagare new [path] [--agent claude|opencode]` — create a new session
-- `nagare setup` — install Claude Code hooks and OpenCode plugin
+- `nagare setup` — install Claude Code hooks, MCP server, and OpenCode plugin
 - `nagare hook-state` — internal: called by Claude Code hooks
 - `nagare popup-watcher` — internal: FIFO watcher for popup overlays
 
@@ -97,6 +102,7 @@ Picker poll (1s) → tmux capture-pane → preview panel update
 - `prefix + g` — fullscreen popup with session picker
 - `prefix + e` — 60% popup with notification center
 - Hooks installed in `~/.claude/settings.json` for all relevant Claude Code events
+- MCP server registered in `~/.claude.json` for inter-agent messaging
 
 ## Git Conventions
 
@@ -126,6 +132,12 @@ The log captures: hook events, notification delivery, state changes, view toggle
 - **Session registry can accumulate fake entries:** Test mocks create entries with `/home/user/` paths. Clean these up if found.
 - **Textual's `App._registry` is reserved:** Don't name instance variables `_registry` — conflicts with Textual's internal widget registry and crashes on shutdown.
 - **Async polling is critical:** All tmux subprocess calls in poll methods must use `asyncio.to_thread()` to avoid blocking Textual's event loop.
+- **MCP server config goes in `~/.claude.json`:** NOT `~/.claude/settings.json`. The `mcpServers` key in settings.json is ignored by Claude Code.
+- **Ctrl+m and Ctrl+i are Enter and Tab in terminals:** Don't use them as standalone shortcuts — they'll trigger Enter/Tab instead.
+- **`[b #color]` markup syntax is invalid in newer Textual:** Use `[bold #color]text[/]` instead of `[b #color]text[/b]`.
+- **TextArea `_on_key` doesn't fire reliably:** Use `on_key` (public) for key interception in TextArea subclasses.
+- **Ctrl+Enter sends `ctrl+j` in terminals:** Not `ctrl+enter`. Handle `ctrl+j` for Ctrl+Enter newline behavior.
+- **Picker runs outside tmux too:** Use `switch_to_session()` helper which auto-selects `switch-client` (inside tmux) vs `attach-session` (outside). For outside tmux, the app must exit first — return `attach:<target>` from the app and attach in `main()`.
 
 ## Development
 
