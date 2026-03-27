@@ -78,7 +78,9 @@ def list_agents() -> str:
     return "Available agents:\n" + "\n".join(lines)
 
 
-def _deliver_message(my_name: str, target: str, message: str) -> tuple[str | None, Path | None]:
+def _deliver_message(
+    my_name: str, target: str, message: str, *, expects_reply: bool = False,
+) -> tuple[str | None, Path | None]:
     """Validate target, create message, send-keys nudge. Returns (error, msg_path)."""
     sessions = scan_sessions()
     target_session = None
@@ -102,19 +104,26 @@ def _deliver_message(my_name: str, target: str, message: str) -> tuple[str | Non
         "from_session": my_name,
         "to_session": target,
         "content": message,
+        "expects_reply": expects_reply,
         "status": "pending",
         "response": None,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "responded_at": None,
     }
     msg_path = _write_message(msg)
-    logger.info("message %s: %s -> %s", msg_id, my_name, target)
+    logger.info("message %s: %s -> %s (expects_reply=%s)", msg_id, my_name, target, expects_reply)
 
     pane_target = f"{target_session.name}:{target_session.window_index}.{target_session.pane_index}"
-    nudge = (
-        f"You have a message from '{my_name}'. "
-        f"Call check_messages() to read and respond."
-    )
+    if expects_reply:
+        nudge = (
+            f"You have a message from '{my_name}' that requires a reply. "
+            f"Call check_messages() to read it, then reply() to respond."
+        )
+    else:
+        nudge = (
+            f"FYI from '{my_name}': {message[:200]} "
+            f"— This is informational only. No reply needed. Continue your current work."
+        )
     run_tmux("send-keys", "-t", pane_target, nudge, "Enter")
 
     msg["status"] = "delivered"
@@ -138,7 +147,7 @@ def send_message(target: str, message: str) -> str:
     if not my_name:
         return "Error: Could not determine current session name."
 
-    error, _ = _deliver_message(my_name, target, message)
+    error, _ = _deliver_message(my_name, target, message, expects_reply=False)
     if error:
         return error
 
@@ -161,7 +170,7 @@ def send_message_and_wait(target: str, message: str, timeout: int = 120) -> str:
     if not my_name:
         return "Error: Could not determine current session name."
 
-    error, msg_path = _deliver_message(my_name, target, message)
+    error, msg_path = _deliver_message(my_name, target, message, expects_reply=True)
     if error:
         return error
 

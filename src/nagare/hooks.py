@@ -325,6 +325,11 @@ def _maybe_play_sound(
     if not config.sounds.enabled:
         return
 
+    # Skip if user is watching this session
+    session_name = _get_session_name(cwd)
+    if session_name and _is_active_session(session_name):
+        return
+
     # Map hook event → CESP category
     category: str | None = None
 
@@ -342,9 +347,6 @@ def _maybe_play_sound(
     config_attr = _CESP_TO_CONFIG.get(category)
     if config_attr and not getattr(config.sounds, config_attr, True):
         return
-
-    # Resolve pack name (per-session override or global default)
-    session_name = _get_session_name(cwd)
     pack_name = config.sounds.pack
     if session_name:
         session_overrides = config.sounds.sessions.get(session_name, {})
@@ -368,6 +370,11 @@ def _maybe_speak(
     if not config.voice.enabled:
         return
 
+    # Skip if user is watching this session
+    session_name = _get_session_name(cwd)
+    if session_name and _is_active_session(session_name):
+        return
+
     # Map hook event → CESP category (same mapping as sounds)
     category: str | None = None
 
@@ -386,7 +393,7 @@ def _maybe_speak(
     if config_attr and not getattr(config.voice, config_attr, True):
         return
 
-    session_name = _get_session_name(cwd) or cwd
+    session_name = session_name or cwd
 
     # Per-session overrides
     session_overrides = config.voice.sessions.get(session_name, {}) if session_name else {}
