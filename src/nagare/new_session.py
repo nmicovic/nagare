@@ -36,6 +36,7 @@ class NewSessionForm(Vertical):
         with RadioSet(id="agent-select"):
             yield RadioButton("Claude", value=True, id="agent-claude")
             yield RadioButton("OpenCode", id="agent-opencode")
+            yield RadioButton("Gemini", id="agent-gemini")
         yield Static("  Continue previous session:", classes="form-label")
         yield Switch(value=True, id="continue-switch")
         yield Static(
@@ -104,7 +105,8 @@ class NewSessionForm(Vertical):
         path = self.query_one("#path-input", Input).value.strip()
         name = self.query_one("#name-input", Input).value.strip()
         radio = self.query_one("#agent-select", RadioSet)
-        agent = "opencode" if radio.pressed_index == 1 else "claude"
+        pressed = radio.pressed_button
+        agent = pressed.id.removeprefix("agent-") if pressed else "claude"
         continue_session = self.query_one("#continue-switch", Switch).value
         return {
             "path": path,

@@ -7,6 +7,7 @@ from nagare.config import NagareConfig, load_config, CONFIG_PATH
 DATA_DIR = Path.home() / ".local" / "share" / "nagare"
 CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 CLAUDE_JSON_PATH = Path.home() / ".claude.json"
+GEMINI_SETTINGS_PATH = Path.home() / ".gemini" / "settings.json"
 OPENCODE_PLUGIN_DIR = Path.home() / ".config" / "opencode" / "plugin"
 OPENCODE_PLUGIN_SRC = Path(__file__).resolve().parent / "opencode_plugin.ts"
 
@@ -163,6 +164,46 @@ def _get_nagare_bin() -> str:
     return "nagare"
 
 
+def _install_hooks_to_file(
+    settings_path: Path,
+    nagare_hooks: dict,
+    label: str,
+    *,
+    create_if_missing: bool = False,
+) -> bool:
+    """Install nagare hooks into an agent's settings.json file.
+
+    Reads existing settings, removes stale nagare hooks, merges fresh ones, writes back.
+    """
+    if not settings_path.exists():
+        if create_if_missing and settings_path.parent.exists():
+            settings_path.write_text("{}")
+        else:
+            print(f"{label} settings not found at {settings_path}")
+            return False
+
+    try:
+        settings = json.loads(settings_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Failed to read {label} settings: {e}")
+        return False
+
+    hooks = settings.setdefault("hooks", {})
+
+    for event, hook_groups in nagare_hooks.items():
+        existing = hooks.get(event, [])
+        cleaned = [
+            group for group in existing
+            if not any("nagare hook-state" in h.get("command", "") for h in group.get("hooks", []))
+        ]
+        cleaned.extend(hook_groups)
+        hooks[event] = cleaned
+
+    settings["hooks"] = hooks
+    settings_path.write_text(json.dumps(settings, indent=2))
+    return True
+
+
 def _install_hooks() -> bool:
     """Add nagare hooks to Claude Code settings.json."""
     nagare_bin = _get_nagare_bin()
@@ -192,33 +233,38 @@ def _install_hooks() -> bool:
         ],
     }
 
-    if not CLAUDE_SETTINGS_PATH.exists():
-        print(f"Claude Code settings not found at {CLAUDE_SETTINGS_PATH}")
-        return False
+    return _install_hooks_to_file(CLAUDE_SETTINGS_PATH, nagare_hooks, "Claude Code")
 
-    try:
-        settings = json.loads(CLAUDE_SETTINGS_PATH.read_text())
-    except (json.JSONDecodeError, OSError) as e:
-        print(f"Failed to read Claude Code settings: {e}")
-        return False
 
-    hooks = settings.setdefault("hooks", {})
+def _install_gemini_hooks() -> bool:
+    """Add nagare hooks to Gemini CLI settings.json."""
+    nagare_bin = _get_nagare_bin()
+    hook_command = f"{nagare_bin} hook-state"
 
-    # For each event: remove old nagare hooks, then add fresh ones.
-    # This ensures timeouts and matchers stay up-to-date on re-run.
-    for event, hook_groups in nagare_hooks.items():
-        existing = hooks.get(event, [])
-        # Remove any existing nagare hooks (will be re-added with current config)
-        cleaned = [
-            group for group in existing
-            if not any("nagare hook-state" in h.get("command", "") for h in group.get("hooks", []))
-        ]
-        cleaned.extend(hook_groups)
-        hooks[event] = cleaned
+    nagare_hooks = {
+        "SessionStart": [
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5000}]}
+        ],
+        "SessionEnd": [
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5000}]}
+        ],
+        "BeforeAgent": [
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5000}]}
+        ],
+        "AfterAgent": [
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5000}]}
+        ],
+        "BeforeTool": [
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5000}]}
+        ],
+        "Notification": [
+            {"hooks": [{"type": "command", "command": hook_command, "timeout": 5000}]}
+        ],
+    }
 
-    settings["hooks"] = hooks
-    CLAUDE_SETTINGS_PATH.write_text(json.dumps(settings, indent=2))
-    return True
+    return _install_hooks_to_file(
+        GEMINI_SETTINGS_PATH, nagare_hooks, "Gemini CLI", create_if_missing=True,
+    )
 
 
 def _install_mcp_server() -> bool:
@@ -276,6 +322,13 @@ def run_setup() -> None:
         print("Hooks installed in ~/.claude/settings.json")
     else:
         print("Could not install hooks automatically.")
+
+    # Install Gemini CLI hooks
+    print("\nInstalling Gemini CLI hooks...")
+    if _install_gemini_hooks():
+        print("Hooks installed in ~/.gemini/settings.json")
+    else:
+        print("Could not install Gemini hooks (Gemini CLI may not be installed).")
 
     # Install MCP server for inter-agent messaging
     print("\nInstalling nagare MCP server...")

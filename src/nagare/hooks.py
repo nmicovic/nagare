@@ -244,11 +244,9 @@ def _maybe_notify(
 
 
 def _event_to_state(event: str, data: dict) -> str:
-    if event == "UserPromptSubmit":
+    if event in ("UserPromptSubmit", "PreToolUse", "BeforeAgent", "BeforeTool", "AfterTool"):
         return "working"
-    elif event == "PreToolUse":
-        return "working"
-    elif event == "Stop":
+    elif event in ("Stop", "AfterAgent"):
         return "idle"
     elif event == "Notification":
         ntype = data.get("notification_type", "")
@@ -301,6 +299,7 @@ def _is_active_session(session_name: str) -> bool:
 _EVENT_TO_CESP = {
     "SessionStart": "session.start",
     "UserPromptSubmit": "task.acknowledge",
+    "BeforeAgent": "task.acknowledge",
     "SessionEnd": "session.end",
 }
 

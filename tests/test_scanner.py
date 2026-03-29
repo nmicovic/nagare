@@ -49,7 +49,7 @@ def test_parse_all_panes_empty():
 
 
 def test_parse_all_panes_filters_agents():
-    raw = "proj-a:0:0:claude\nproj-a:0:1:zsh\nproj-b:0:0:opencode"
+    raw = "proj-a:0:0:claude:1000\nproj-a:0:1:zsh:1001\nproj-b:0:0:opencode:1002"
     result = _parse_all_panes(raw)
     assert result == {
         "proj-a": [(0, 0, AgentType.CLAUDE)],
@@ -58,7 +58,7 @@ def test_parse_all_panes_filters_agents():
 
 
 def test_parse_all_panes_multiple_agents_same_session():
-    raw = "proj:0:0:claude\nproj:1:0:opencode"
+    raw = "proj:0:0:claude:1000\nproj:1:0:opencode:1001"
     result = _parse_all_panes(raw)
     assert result == {
         "proj": [(0, 0, AgentType.CLAUDE), (1, 0, AgentType.OPENCODE)],
@@ -71,7 +71,7 @@ def test_scan_sessions_claude(mock_run):
         # list-sessions
         "proj-a:$1:/home/user/a\nproj-b:$2:/home/user/b",
         # list-panes -a (single call for all sessions)
-        "proj-a:0:0:claude\nproj-b:0:0:zsh",
+        "proj-a:0:0:claude:1000\nproj-b:0:0:zsh:1001",
         # capture-pane for proj-a (no hook state, needs fallback)
         "Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel",
     ]
@@ -87,7 +87,7 @@ def test_scan_sessions_opencode(mock_run):
         # list-sessions
         "oc-proj:$1:/home/user/oc",
         # list-panes -a
-        "oc-proj:0:0:opencode",
+        "oc-proj:0:0:opencode:2000",
         # capture-pane
         "some opencode output\n",
     ]
@@ -102,7 +102,7 @@ def test_scan_sessions_mixed(mock_run):
         # list-sessions
         "claude-proj:$1:/home/user/a\noc-proj:$2:/home/user/b",
         # list-panes -a (single call)
-        "claude-proj:0:0:claude\noc-proj:0:0:opencode",
+        "claude-proj:0:0:claude:3000\noc-proj:0:0:opencode:3001",
         # capture-pane for claude-proj
         "❯\n",
         # capture-pane for oc-proj
@@ -121,7 +121,7 @@ def test_scan_sessions_with_hook_state_skips_capture(mock_run):
         # list-sessions
         "proj-a:$1:/home/user/a",
         # list-panes -a
-        "proj-a:0:0:claude",
+        "proj-a:0:0:claude:4000",
         # No capture-pane call expected — hook state covers it
     ]
     with patch("nagare.tmux.scanner.load_all_states") as mock_states:

@@ -30,7 +30,7 @@ def create_session(
     Args:
         path: Working directory for the session.
         name: Session name. Auto-generated from path basename if None.
-        agent: Agent to launch ("claude" or "opencode").
+        agent: Agent to launch ("claude", "opencode", or "gemini").
         continue_session: If True, launch with -c to continue previous session.
 
     Returns:
@@ -67,8 +67,8 @@ def create_session(
         run_tmux("new-session", "-d", "-s", name, "-c", str(resolved))
         logger.info("created session %s at %s", name, resolved)
 
-    # Launch agent
-    flag = " -c" if continue_session else ""
+    # Launch agent (gemini auto-resumes, no -c flag needed)
+    flag = " -c" if continue_session and agent != "gemini" else ""
     cmd = f"{agent}{flag}"
     run_tmux("send-keys", "-t", name, cmd, "Enter")
     logger.info("launched %s in session %s", cmd, name)

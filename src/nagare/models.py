@@ -5,6 +5,7 @@ from enum import Enum
 class AgentType(Enum):
     CLAUDE = "claude"
     OPENCODE = "opencode"
+    GEMINI = "gemini"
     UNKNOWN = "unknown"
 
 
@@ -12,6 +13,7 @@ class AgentType(Enum):
 AGENT_ICONS: dict[AgentType, str] = {
     AgentType.CLAUDE: "[bold #da7756 on #3b2820] C [/]",
     AgentType.OPENCODE: "[bold #00e5ff on #002b33] O [/]",
+    AgentType.GEMINI: "[bold #4285f4 on #1a2744] G [/]",
     AgentType.UNKNOWN: "[dim] ? [/]",
 }
 
@@ -27,6 +29,11 @@ AGENT_BLOCK: dict[AgentType, tuple[str, str, str]] = {
         "[bold #00e5ff on #002b33]║ O ║[/]",
         "[bold #00e5ff on #002b33]╚═══╝[/]",
     ),
+    AgentType.GEMINI: (
+        "[bold #4285f4 on #1a2744]╔═══╗[/]",
+        "[bold #4285f4 on #1a2744]║ G ║[/]",
+        "[bold #4285f4 on #1a2744]╚═══╝[/]",
+    ),
     AgentType.UNKNOWN: (
         "[dim]╔═══╗[/]",
         "[dim]║ ? ║[/]",
@@ -37,6 +44,7 @@ AGENT_BLOCK: dict[AgentType, tuple[str, str, str]] = {
 AGENT_LABELS: dict[AgentType, str] = {
     AgentType.CLAUDE: "Claude",
     AgentType.OPENCODE: "OpenCode",
+    AgentType.GEMINI: "Gemini",
     AgentType.UNKNOWN: "Unknown",
 }
 

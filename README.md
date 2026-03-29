@@ -1,5 +1,5 @@
 <h1 align="center">nagare 流れ</h1>
-<p align="center">A tmux-integrated session manager for AI coding agents.<br>Monitor, switch, and control multiple Claude Code and OpenCode sessions from a single interface.</p>
+<p align="center">A tmux-integrated session manager for AI coding agents.<br>Monitor, switch, and control multiple Claude Code, OpenCode, and Gemini CLI sessions from a single interface.</p>
 
 <p align="center">
   <img src="images/nagare-logo-glowing.jpg" alt="nagare" width="550">
@@ -23,8 +23,9 @@ When you run multiple AI agents across tmux sessions, nagare gives you:
 |-------|-----------|---------------|
 | **Claude Code** | Process name `claude` | Hook-based (real-time) |
 | **OpenCode** | Process name `opencode` | Plugin-based (real-time) |
+| **Gemini CLI** | Cmdline inspection (`node` → `/bin/gemini`) | Hook-based (real-time) |
 
-Sessions are identified by colored icons: **C** for Claude, **O** for OpenCode.
+Sessions are identified by colored icons: **C** for Claude, **O** for OpenCode, **G** for Gemini.
 
 ## Install
 
@@ -108,7 +109,7 @@ Press `Ctrl+s` to reveal unloaded sessions below the active ones. Star sessions 
 Fast session creation for throwaway projects:
 
 1. Type a name (e.g. `streaming_test`)
-2. Pick agent (Claude/OpenCode)
+2. Pick agent (Claude/OpenCode/Gemini)
 3. Enter → creates `~/Prototypes/streaming_test/`, starts tmux session, launches agent
 
 Configurable root path in `[picker]` section of config.
@@ -276,6 +277,7 @@ tokyonight, tokyonight-storm, tokyonight-light, catppuccin-mocha, catppuccin-lat
 ```
 Claude Code hooks → hooks.py → state files → scanner → picker UI
 OpenCode plugin  → state files ↗
+Gemini CLI hooks → hooks.py → state files ↗
 
 Picker poll (2s) → scan sessions → update list/grid
 Preview poll (configurable) → tmux capture-pane → live preview
@@ -285,8 +287,8 @@ MCP server (per session) → message files → tmux send-keys → target agent
 
 Key components:
 
-- **Scanner** — discovers agents across all tmux sessions via `list-panes -a`
-- **Hooks** — Claude Code lifecycle events write state files for real-time detection
+- **Scanner** — discovers agents across all tmux sessions via `list-panes -a`, with `/proc` cmdline inspection for Node.js-based agents (Gemini CLI)
+- **Hooks** — Claude Code and Gemini CLI lifecycle events write state files for real-time detection
 - **OpenCode plugin** — TypeScript plugin writes state files in the same format
 - **State reader** — resolves conflicts when multiple sessions share the same project path
 - **Notification delivery** — toast, bell, OS notify, popup with FIFO watcher for overlay support
