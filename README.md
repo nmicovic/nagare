@@ -39,11 +39,18 @@ uv sync
 uv run nagare setup
 ```
 
+nagare is not yet published on PyPI — a proper `pip install nagare` distribution is planned. For now, install from the git checkout. The `nagare` binary lives in the venv at `.venv/bin/nagare`. Either use the full path in your tmux config, or add it to your `PATH`:
+
+```bash
+# Option: symlink to a directory already in PATH
+ln -s /path/to/nagare/.venv/bin/nagare ~/.local/bin/nagare
+```
+
 Add to your `~/.tmux.conf`:
 
 ```bash
-# Session picker (fullscreen)
-bind g display-popup -w100% -h100% -E "/path/to/nagare/.venv/bin/nagare pick"
+# Session picker (fullscreen, -B removes tmux popup border since the TUI has its own)
+bind g display-popup -w100% -h100% -B -E "/path/to/nagare/.venv/bin/nagare pick"
 
 # Notification center
 bind e display-popup -w60% -h60% -E "/path/to/nagare/.venv/bin/nagare notifs"
