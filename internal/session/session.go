@@ -1,0 +1,261 @@
+package session
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/nmicovic/nagare/internal/config"
+	"github.com/nmicovic/nagare/internal/log"
+	"github.com/nmicovic/nagare/internal/models"
+	"github.com/nmicovic/nagare/internal/state"
+	"github.com/nmicovic/nagare/internal/tmux"
+)
+
+// ResolvePath resolves a path. If it contains no / and no ~, prepend QuickProjectPath.
+func ResolvePath(path string) string {
+	if !strings.Contains(path, "/") && !strings.Contains(path, "~") {
+		cfg, _ := config.Load()
+		return filepath.Join(cfg.Picker.QuickProjectPath, path)
+	}
+	return path
+}
+
+// ExpandPath expands ~ to home directory and returns absolute path.
+func ExpandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, _ := os.UserHomeDir()
+		path = filepath.Join(home, path[2:])
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
+}
+
+// UniqueName ensures a session name is unique by appending -N if needed.
+func UniqueName(name string) string {
+	existing := make(map[string]bool)
+	raw := tmux.RunTmux("list-sessions", "-F", "#{session_name}")
+	for _, line := range strings.Split(raw, "\n") {
+		existing[strings.TrimSpace(line)] = true
+	}
+	if !existing[name] {
+		return name
+	}
+	for i := 2; i < 100; i++ {
+		candidate := fmt.Sprintf("%s-%d", name, i)
+		if !existing[candidate] {
+			return candidate
+		}
+	}
+	return fmt.Sprintf("%s-%d", name, os.Getpid())
+}
+
+// Create creates a new tmux session with the specified agent.
+func Create(path, name, agent string, continueSession bool) (string, error) {
+	// If a name is given, always treat path as the parent directory.
+	// ~/Projects + myapp → ~/Projects/myapp
+	// ~/Projects/ + myapp → ~/Projects/myapp
+	if name != "" {
+		path = filepath.Join(path, name)
+	}
+	path = ExpandPath(ResolvePath(path))
+
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return "", fmt.Errorf("cannot create directory: %w", err)
+	}
+
+	if name == "" {
+		name = filepath.Base(path)
+	}
+	name = UniqueName(name)
+
+	// Create tmux session
+	tmux.RunTmux("new-session", "-d", "-s", name, "-c", path)
+
+	// Launch agent
+	cmd := agentCommand(agent, "", path, continueSession)
+	tmux.RunTmux("send-keys", "-t", name, cmd, "Enter")
+
+	// Register
+	reg := state.NewRegistry(state.DefaultRegistryPath())
+	reg.Register(name, path, agent)
+
+	log.Info("created session %s (%s) at %s", name, agent, path)
+	return name, nil
+}
+
+// Load restarts a previously saved session (already in the registry).
+// It reuses the existing name and path, continuing the agent if possible.
+func Load(path, name, agent string) (string, error) {
+	path = ExpandPath(path)
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("path does not exist: %s", path)
+	}
+
+	// Check if tmux session already exists
+	existing := tmux.RunTmux("list-sessions", "-F", "#{session_name}")
+	for _, line := range strings.Split(existing, "\n") {
+		if strings.TrimSpace(line) == name {
+			// Session exists but agent is dead — launch agent in it
+			cmd := agentCommand(agent, "", path, true)
+			tmux.RunTmux("send-keys", "-t", name, cmd, "Enter")
+			log.Info("loaded agent in existing session %s (%s)", name, agent)
+			return name, nil
+		}
+	}
+
+	// Create new tmux session
+	tmux.RunTmux("new-session", "-d", "-s", name, "-c", path)
+	cmd := agentCommand(agent, "", path, true)
+	tmux.RunTmux("send-keys", "-t", name, cmd, "Enter")
+
+	reg := state.NewRegistry(state.DefaultRegistryPath())
+	reg.Register(name, path, agent)
+
+	log.Info("loaded session %s (%s) at %s", name, agent, path)
+	return name, nil
+}
+
+// claudeSessionExists reports whether a previous Claude conversation exists
+// for the given project directory. Claude stores conversations as .jsonl files
+// under ~/.claude/projects/<path-with-slashes-as-dashes>/.
+func claudeSessionExists(projectPath string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	encoded := strings.ReplaceAll(projectPath, "/", "-")
+	dir := filepath.Join(home, ".claude", "projects", encoded)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
+			return true
+		}
+	}
+	return false
+}
+
+// SupportsModelSelection reports whether the agent accepts a per-session model flag.
+func SupportsModelSelection(agent string) bool {
+	switch agent {
+	case "claude", "codex", "opencode", "gemini", "pi", "omp":
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidateModelSelection checks that a model can be safely passed to the selected agent.
+func ValidateModelSelection(agent, model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return nil
+	}
+	if !SupportsModelSelection(agent) {
+		return fmt.Errorf("%s does not support per-session model selection", agent)
+	}
+	if strings.HasPrefix(model, "-") {
+		return fmt.Errorf("model must not start with a dash")
+	}
+	for _, char := range model {
+		switch {
+		case char >= 'a' && char <= 'z',
+			char >= 'A' && char <= 'Z',
+			char >= '0' && char <= '9',
+			strings.ContainsRune("._:/@+-", char):
+		default:
+			return fmt.Errorf("model contains unsupported character %q", char)
+		}
+	}
+	return nil
+}
+
+// agentCommand returns the command to launch an agent.
+func agentCommand(agent, model, projectPath string, continueSession bool) string {
+	command := agent
+	if model = strings.TrimSpace(model); model != "" {
+		command += " --model " + model
+	}
+	switch agent {
+	case "opencode":
+		if continueSession {
+			return command + " -c"
+		}
+	case "gemini", "crush":
+	case "pi", "omp":
+		if continueSession {
+			return command + " -c"
+		}
+	case "codex":
+		// Codex has no -c: resuming is its own subcommand, and --last picks the
+		// most recent thread instead of opening the session picker.
+		if continueSession {
+			return command + " resume --last"
+		}
+	default: // claude
+		if continueSession && claudeSessionExists(projectPath) {
+			return command + " -c"
+		}
+	}
+	return command
+}
+
+// ListDirectories returns directory suggestions for path autocomplete.
+func ListDirectories(partial string, maxResults int) []string {
+	partial = ExpandPath(partial)
+
+	dir := partial
+	prefix := ""
+	if !strings.HasSuffix(partial, "/") {
+		dir = filepath.Dir(partial)
+		prefix = strings.ToLower(filepath.Base(partial))
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	var results []string
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if prefix != "" && !strings.HasPrefix(strings.ToLower(e.Name()), prefix) {
+			continue
+		}
+		results = append(results, filepath.Join(dir, e.Name()))
+		if len(results) >= maxResults {
+			break
+		}
+	}
+	return results
+}
+
+// SwitchToSession switches to or attaches to a tmux session.
+func SwitchToSession(name string) {
+	if os.Getenv("TMUX") != "" {
+		tmux.RunTmux("switch-client", "-t", name)
+	} else {
+		tmux.RunTmux("attach-session", "-t", name)
+	}
+}
+
+// SwitchToPane switches to a specific tmux session:window.pane.
+func SwitchToPane(s models.Session) {
+	target := tmux.PaneTarget(s.SessionName, s.WindowIndex, s.PaneIndex)
+	if os.Getenv("TMUX") != "" {
+		tmux.RunTmux("select-window", "-t", fmt.Sprintf("%s:%d", s.SessionName, s.WindowIndex))
+		tmux.RunTmux("select-pane", "-t", target)
+		tmux.RunTmux("switch-client", "-t", s.SessionName)
+	} else {
+		tmux.RunTmux("attach-session", "-t", target)
+	}
+}

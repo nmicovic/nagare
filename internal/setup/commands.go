@@ -1,0 +1,219 @@
+package setup
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+// command templates keyed by name (without extension).
+var commands = map[string]struct {
+	description string
+	prompt      string
+}{
+	"nagare-inbox": {
+		description: "Check your message inbox using the nagare MCP server",
+		prompt: `Check your message inbox using the nagare MCP server.
+
+Call check_messages() to see:
+- Pending messages sent to you (respond with reply())
+- Whether messages you sent are saved, notified, read, or answered
+- Late responses to messages whose wait ended
+
+If there are pending messages, read them carefully and use reply() to respond to each one.`,
+	},
+	"nagare-ls": {
+		description: "List all available agent sessions using the nagare MCP server",
+		prompt: `List all available agent sessions using the nagare MCP server.
+
+Call list_agents() to show all sessions with their name, agent type, status (idle/working/waiting_input/dead), unread-message count, and project path.`,
+	},
+	"nagare-send": {
+		description: "Send a message to another agent session (fire-and-forget)",
+		prompt: `Send a message to another agent session using the nagare MCP server (fire-and-forget, does not wait for acknowledgment). Use check_messages() later to see its delivery state.
+
+First call list_agents() to find an idle session, then call send_message() with the target and message. The result includes the durable message ID.
+
+The user's argument is the message to send in the format: "TARGET_SESSION MESSAGE"
+
+For example: "shop-backend Please review the API changes"
+
+If no target is specified, call list_agents() and ask which session to message.
+
+$ARGUMENTS`,
+	},
+	"nagare-send-wait": {
+		description: "Send a message to another agent and wait for their response",
+		prompt: `Send a message to another agent session using the nagare MCP server and WAIT for their response. The server reports an unacknowledged delivery after 30 seconds; once read, it waits until the reply timeout. An MCP client may background the tool call while the server is waiting.
+
+First call list_agents() to find an available session and verify the target is IDLE, then call send_message_and_wait() with the target, message, and a reasonable timeout (default 120s).
+
+The user's argument is the message to send in the format: "TARGET_SESSION MESSAGE"
+
+For example: "shop-backend Can you give me the latest API docs?"
+
+If no target is specified, call list_agents() and ask which session to message.
+
+$ARGUMENTS`,
+	},
+}
+
+// commandTarget defines where and how to write commands for an agent CLI.
+type commandTarget struct {
+	label  string
+	dir    string
+	ext    string
+	format func(name, description, prompt string) string
+}
+
+// installCommands installs slash commands for all supported agent CLIs.
+func installCommands(home string) {
+	targets := []commandTarget{
+		{
+			label: "Claude Code",
+			dir:   filepath.Join(home, ".claude", "commands"),
+			ext:   ".md",
+			format: func(_, _, prompt string) string {
+				return prompt + "\n"
+			},
+		},
+		{
+			label: "Gemini CLI",
+			dir:   filepath.Join(home, ".gemini", "commands"),
+			ext:   ".toml",
+			format: func(_, description, prompt string) string {
+				return fmt.Sprintf("description = %q\nprompt = %q\n", description, prompt)
+			},
+		},
+		{
+			label: "OpenCode",
+			dir:   filepath.Join(home, ".config", "opencode", "commands"),
+			ext:   ".md",
+			format: func(_, description, prompt string) string {
+				return fmt.Sprintf("---\ndescription: %s\n---\n\n%s\n", description, prompt)
+			},
+		},
+		{
+			label: "pi",
+			dir:   filepath.Join(home, ".pi", "agent", "prompts"),
+			ext:   ".md",
+			format: func(_, description, prompt string) string {
+				return piPromptTemplate(description, prompt)
+			},
+		},
+		{
+			label: "OhMyPi",
+			dir:   filepath.Join(home, ".omp", "agent", "commands"),
+			ext:   ".md",
+			format: func(_, description, prompt string) string {
+				return fmt.Sprintf("---\ndescription: %s\n---\n\n%s\n", description, prompt)
+			},
+		},
+	}
+	for _, t := range targets {
+		if err := writeCommandFiles(t); err != nil {
+			fmt.Printf("  Commands: %s — skipped (%v)\n", t.label, err)
+			continue
+		}
+		fmt.Printf("  Commands: %s — %s\n", t.label, t.dir)
+	}
+
+	// Crush and Codex read Agent Skills instead of user-level slash commands.
+	installCrushSkill(home)
+	installCodexSkill(home)
+}
+
+// nagareSkillBody documents the collaboration tools for agents that read Agent
+// Skills instead of slash commands (Crush, Codex). The tools are the same ones
+// the MCP server exposes, so the text is shared rather than duplicated per
+// agent.
+const nagareSkillBody = `# Nagare — Agent Collaboration
+
+You have access to the nagare MCP server for communicating with other AI agent sessions and handling assigned tickets.
+
+## Available Tools
+
+- **list_agents()** — List active sessions with name, type, status, unread-message count, and path
+- **send_message(target, message)** — Persist and notify a fire-and-forget message; returns its message ID
+- **send_message_and_wait(target, message, timeout)** — Persist and notify a message; fail after 30s without read acknowledgment, otherwise wait for the reply timeout
+- **check_messages()** — Read incoming messages and inspect outgoing saved/notified/read/replied state
+- **reply(message_id, content)** — Reply to a pending message
+- **list_tickets(status, project_path, today)** — List work tracked on the Nagare board
+- **get_ticket(ticket_id)** — Read a ticket's full context and acceptance criteria
+- **submit_ticket(ticket_id, summary)** — Hand assigned work back for human review; summary must explain what changed and how it was verified
+
+## Workflows
+
+### List sessions
+Call list_agents() to see all available sessions.
+
+### Send a message (fire-and-forget)
+1. Call list_agents() to find an idle target.
+2. Call send_message(target, message) and retain the returned message ID.
+3. Later, call check_messages() to inspect whether it was notified or read.
+
+### Send and wait for reply
+1. Call list_agents() and verify target is IDLE.
+2. Call send_message_and_wait(target, message, timeout). The server reports if the target does not acknowledge reading within 30 seconds; an MCP client may background the call while it waits.
+
+### Check inbox
+Call check_messages() — reply to pending messages with reply(message_id, content), and report any unresolved outgoing states.
+
+### Complete an assigned ticket
+1. Call get_ticket(ticket_id) if the assignment prompt does not contain enough context.
+2. Implement and verify the requested outcome.
+3. Call submit_ticket(ticket_id, summary) with what changed and how it was verified. Nagare records your agent, session, repository, and submission time automatically.
+4. Do not mark the ticket done; Done means human-reviewed.
+`
+
+// installCrushSkill writes a nagare Agent Skill to ~/.config/crush/skills/nagare/SKILL.md.
+func installCrushSkill(home string) {
+	dir := filepath.Join(home, ".config", "crush", "skills", "nagare")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Printf("  Skill: Crush — skipped (%v)\n", err)
+		return
+	}
+	path := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(path, []byte(nagareSkillBody), 0644); err != nil {
+		fmt.Printf("  Skill: Crush — skipped (%v)\n", err)
+		return
+	}
+	fmt.Printf("  Skill: Crush — %s\n", dir)
+}
+
+// installCodexSkill writes the nagare messaging skill to
+// ~/.codex/skills/nagare/SKILL.md. Codex discovers skills there for every
+// project; unlike Claude Code and OpenCode it has no user-level slash commands
+// to install, so it gets a skill, as Crush does.
+func installCodexSkill(home string) {
+	dir := filepath.Join(home, ".codex", "skills", "nagare")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Printf("  Skill: Codex — skipped (%v)\n", err)
+		return
+	}
+	// Codex requires front matter naming the skill; the name must match the
+	// directory, and the description is what it matches a request against.
+	skill := "---\nname: nagare\ndescription: " +
+		"Communicate with other AI agent sessions — list them, send messages, and check the inbox.\n" +
+		"---\n\n" + nagareSkillBody
+	path := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(path, []byte(skill), 0644); err != nil {
+		fmt.Printf("  Skill: Codex — skipped (%v)\n", err)
+		return
+	}
+	fmt.Printf("  Skill: Codex — %s\n", dir)
+}
+
+func writeCommandFiles(t commandTarget) error {
+	if err := os.MkdirAll(t.dir, 0755); err != nil {
+		return err
+	}
+	for name, cmd := range commands {
+		content := t.format(name, cmd.description, cmd.prompt)
+		path := filepath.Join(t.dir, name+t.ext)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			return err
+		}
+	}
+	return nil
+}

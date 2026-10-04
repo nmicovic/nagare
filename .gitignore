@@ -1,0 +1,39 @@
+# Build output
+/nagare
+/dist/
+*.exe
+
+# Test binaries, coverage and profiles. `go test -cpuprofile` leaves the
+# compiled test binary in the working directory, which is how an 8MB
+# picker.test once got committed.
+*.test
+*.out
+*.prof
+*.pprof
+*.coverprofile
+coverage.html
+
+# Local Go workspace
+go.work
+go.work.sum
+
+# Worktrees created inside the repository: Claude Code puts its own under
+# .claude/worktrees/, nagare puts every other agent's under .worktrees/.
+# Each one is a full checkout.
+/.claude/worktrees/
+/.worktrees/
+
+# Per-user agent, tool and editor state
+/.claude/settings.local.json
+/.crush/
+/.omo/
+/.codegraph
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Local design records and research, kept out of the public repository.
+/docs/internal/

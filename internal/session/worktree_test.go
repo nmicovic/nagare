@@ -1,0 +1,144 @@
+package session
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestPlanWorktreeLaunchClaude(t *testing.T) {
+	root := "/home/u/Projects/app"
+	got := planWorktreeLaunch("claude", root, "the-site", true)
+
+	// Claude creates the worktree itself, so the window opens at the repo root
+	// and the command carries the flag.
+	if got.Cmd != "claude -w the-site" {
+		t.Errorf("Cmd = %q, want %q", got.Cmd, "claude -w the-site")
+	}
+	if got.Cwd != root {
+		t.Errorf("Cwd = %q, want the repo root %q", got.Cwd, root)
+	}
+	want := filepath.Join(root, ".claude", "worktrees", "the-site")
+	if got.Path != want {
+		t.Errorf("Path = %q, want %q", got.Path, want)
+	}
+	if got.PreCreate {
+		t.Error("PreCreate = true, but Claude creates its own worktree")
+	}
+}
+
+func TestPlanWorktreeLaunchOtherAgents(t *testing.T) {
+	root := "/home/u/Projects/app"
+	for _, agent := range []string{"opencode", "gemini", "crush", "pi", "omp", "codex"} {
+		got := planWorktreeLaunch(agent, root, "the-site", true)
+
+		want := filepath.Join(root, ".worktrees", "the-site")
+		if got.Path != want {
+			t.Errorf("%s: Path = %q, want %q", agent, got.Path, want)
+		}
+		// No -w flag exists for these, so nagare makes the worktree and the
+		// window opens inside it.
+		if !got.PreCreate {
+			t.Errorf("%s: PreCreate = false, want true", agent)
+		}
+		if got.Cwd != want {
+			t.Errorf("%s: Cwd = %q, want the worktree %q", agent, got.Cwd, want)
+		}
+		if strings.Contains(got.Cmd, "-w") {
+			t.Errorf("%s: Cmd = %q, must not pass -w", agent, got.Cmd)
+		}
+		if !strings.HasPrefix(got.Cmd, agent) {
+			t.Errorf("%s: Cmd = %q, want it to launch %s", agent, got.Cmd, agent)
+		}
+		// A fresh worktree has no prior session to continue.
+		if strings.Contains(got.Cmd, "-c") {
+			t.Errorf("%s: Cmd = %q, must not continue a session in a new worktree", agent, got.Cmd)
+		}
+	}
+}
+
+// --tmux would make Claude create a second tmux session, fighting the one
+// nagare just made the window in.
+func TestPlanWorktreeLaunchNeverPassesTmux(t *testing.T) {
+	for _, agent := range []string{"claude", "opencode", "pi", "omp", "codex"} {
+		if got := planWorktreeLaunch(agent, "/r", "w", true); strings.Contains(got.Cmd, "--tmux") {
+			t.Errorf("%s: Cmd = %q, must not pass --tmux", agent, got.Cmd)
+		}
+	}
+}
+
+// Every agent must launch itself. "crush" previously fell through to the
+// default branch and silently started claude.
+func TestAgentCommandLaunchesTheRequestedAgent(t *testing.T) {
+	for _, agent := range []string{"claude", "opencode", "gemini", "crush", "pi", "omp", "codex"} {
+		if got := agentCommand(agent, "", "/tmp", false); !strings.HasPrefix(got, agent) {
+			t.Errorf("agentCommand(%q) = %q, want it to launch %s", agent, got, agent)
+		}
+	}
+}
+
+func TestAgentCommandContinuesOhMyPiSession(t *testing.T) {
+	if got := agentCommand("omp", "", "/tmp", true); got != "omp -c" {
+		t.Errorf("agentCommand(omp, continue) = %q, want %q", got, "omp -c")
+	}
+}
+
+func TestAgentCommandSelectsRequestedModel(t *testing.T) {
+	tests := []struct {
+		agent string
+		model string
+		want  string
+	}{
+		{agent: "claude", model: "fable", want: "claude --model fable"},
+		{agent: "codex", model: "gpt-5.6-codex", want: "codex --model gpt-5.6-codex"},
+		{agent: "opencode", model: "anthropic/claude-opus-4-1", want: "opencode --model anthropic/claude-opus-4-1"},
+		{agent: "gemini", model: "gemini-2.5-pro", want: "gemini --model gemini-2.5-pro"},
+		{agent: "pi", model: "anthropic/claude-sonnet-4:high", want: "pi --model anthropic/claude-sonnet-4:high"},
+		{agent: "omp", model: "opus", want: "omp --model opus"},
+	}
+	for _, test := range tests {
+		if err := ValidateModelSelection(test.agent, test.model); err != nil {
+			t.Errorf("%s model validation: %v", test.agent, err)
+			continue
+		}
+		if got := agentCommand(test.agent, test.model, "/tmp", false); got != test.want {
+			t.Errorf("agentCommand(%q, %q) = %q, want %q", test.agent, test.model, got, test.want)
+		}
+	}
+}
+
+func TestModelSelectionRejectsUnsupportedAgentAndShellSyntax(t *testing.T) {
+	for _, test := range []struct {
+		agent string
+		model string
+	}{
+		{agent: "crush", model: "some-model"},
+		{agent: "claude", model: "fable; rm -rf /"},
+		{agent: "codex", model: "--profile"},
+	} {
+		if err := ValidateModelSelection(test.agent, test.model); err == nil {
+			t.Errorf("ValidateModelSelection(%q, %q) accepted an unsafe selection", test.agent, test.model)
+		}
+	}
+}
+
+// `claude -w` refuses on an untrusted directory rather than prompting, so an
+// untrusted repo must fall back to a nagare-created worktree and plain claude.
+func TestPlanWorktreeLaunchClaudeUntrusted(t *testing.T) {
+	root := "/home/u/Projects/app"
+	got := planWorktreeLaunch("claude", root, "the-site", false)
+
+	if strings.Contains(got.Cmd, "-w") {
+		t.Errorf("Cmd = %q, must not pass -w to an untrusted directory", got.Cmd)
+	}
+	if !got.PreCreate {
+		t.Error("PreCreate = false, but nagare must create the worktree itself")
+	}
+	want := filepath.Join(root, ".worktrees", "the-site")
+	if got.Path != want || got.Cwd != want {
+		t.Errorf("Path/Cwd = %q/%q, want %q", got.Path, got.Cwd, want)
+	}
+	if !strings.HasPrefix(got.Cmd, "claude") {
+		t.Errorf("Cmd = %q, want it to still launch claude", got.Cmd)
+	}
+}
