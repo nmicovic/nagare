@@ -8,15 +8,27 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels the run it replaces; pushes to main each get their own run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Owner/collaborator runs go to the self-hosted visas runner; fork PRs (public repo) go to GitHub-hosted
+    # runners — the visas runner manager refuses them anyway, this keeps them from waiting in its queue.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","visas"]') }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      # The self-hosted runner mounts /tmp noexec; Go runs its test binaries from GOTMPDIR (default /tmp).
+      - name: Build temp dir that allows exec
+        run: echo "GOTMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Check formatting
         run: |
