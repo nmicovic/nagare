@@ -2,15 +2,23 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, ci/self-hosted-runner] # TEMP: prove the branch on the self-hosted runner before the PR
   pull_request:
 
 permissions:
   contents: read
 
+# A new push to a PR cancels the run it replaces; pushes to main each get their own run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Owner/collaborator runs go to the self-hosted visas runner; fork PRs (public repo) go to GitHub-hosted
+    # runners — the visas runner manager refuses them anyway, this keeps them from waiting in its queue.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted","visas"]') }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
