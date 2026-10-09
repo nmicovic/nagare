@@ -26,6 +26,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # The self-hosted runner mounts /tmp noexec; Go runs its test binaries from GOTMPDIR (default /tmp).
+      - name: Build temp dir that allows exec
+        run: echo "GOTMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       - name: Check formatting
         run: |
           unformatted=$(gofmt -l .)
